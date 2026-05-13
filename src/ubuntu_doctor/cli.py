@@ -148,6 +148,12 @@ def _add_common_options(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Don't consult or write to the local feedback store.",
     )
+    parser.add_argument(
+        "--no-color",
+        action="store_true",
+        help="Disable ANSI colors in the text output. Colors are also "
+        "auto-disabled when stdout is not a TTY or NO_COLOR is set.",
+    )
     analyzer_ids = ", ".join(sorted(ANALYZER_REGISTRY))
     parser.add_argument(
         "--analyzers",
@@ -348,18 +354,31 @@ async def _run_diagnose(args: argparse.Namespace) -> int:
         client, snapshot, hypotheses, symptom, retrieved, past
     )
 
-    renderer = jsonout.render if args.json else text.render
-    print(
-        renderer(
-            snapshot,
-            hypotheses,
-            explanation=explanation,
-            symptom=symptom,
-            llm_error=llm_error,
-            retrieved=retrieved,
-            past_incidents=past,
+    if args.json:
+        print(
+            jsonout.render(
+                snapshot,
+                hypotheses,
+                explanation=explanation,
+                symptom=symptom,
+                llm_error=llm_error,
+                retrieved=retrieved,
+                past_incidents=past,
+            )
         )
-    )
+    else:
+        print(
+            text.render(
+                snapshot,
+                hypotheses,
+                explanation=explanation,
+                symptom=symptom,
+                llm_error=llm_error,
+                retrieved=retrieved,
+                past_incidents=past,
+                color=False if args.no_color else None,
+            )
+        )
 
     _write_last_run(args, hypotheses, symptom, fingerprint)
     return 0
