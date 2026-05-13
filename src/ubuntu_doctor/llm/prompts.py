@@ -9,13 +9,19 @@ from __future__ import annotations
 
 import json
 
+from ubuntu_doctor.feedback.store import Incident
+from ubuntu_doctor.rag.types import RetrievedSnippet
 from ubuntu_doctor.snapshot import Hypothesis, Snapshot
 
-PROMPT_VERSION = "1"
+# Bumped to 2 because the user prompt now carries retrieved snippets and
+# past-incident few-shot examples — different shape than v1.
+PROMPT_VERSION = "2"
 
-MAX_HYPOTHESES_IN_PROMPT = 8
-MAX_RECENT_EVENTS = 25
-MAX_EVIDENCE_PER_HYPOTHESIS = 10
+MAX_HYPOTHESES_IN_PROMPT = 5
+MAX_RECENT_EVENTS = 10
+MAX_EVIDENCE_PER_HYPOTHESIS = 5
+MAX_RETRIEVED_SNIPPETS = 5
+MAX_PAST_INCIDENTS = 3
 
 SYSTEM_PROMPT = """\
 You are ubuntu-doctor, a diagnostic assistant for Ubuntu Linux. You receive
@@ -23,7 +29,15 @@ a JSON document describing:
 - a time window of recent system events from the user's machine;
 - hypotheses already produced by deterministic rule-based analyzers, each
   with evidence, confidence, suggested actions, and known risks;
-- optionally, a user-reported symptom (e.g. "audio stopped working").
+- optionally, a user-reported symptom (e.g. "audio stopped working");
+- `retrieved_context`: small reference snippets (changelog entries,
+  AppArmor profile bodies, apport reports) fetched on-demand from the
+  user's machine. Cite these in your `why` text when you use them.
+- `past_incidents`: similar incidents this user previously confirmed,
+  with the outcome of the fix they tried. Use them as few-shot guidance
+  — if a past fix was marked `fixed`, prefer similar fix commands; if
+  it was marked `not-fixed` or `made-it-worse`, avoid that fix and say
+  why.
 
 Your job:
 1. Re-rank the supplied hypotheses by plausibility given the evidence and,
@@ -105,6 +119,8 @@ def _summarise_for_llm(
     snapshot: Snapshot,
     hypotheses: list[Hypothesis],
     symptom: str | None,
+    retrieved: list[RetrievedSnippet],
+    past_incidents: list[Incident],
 ) -> dict:
     return {
         "symptom": symptom,
@@ -134,7 +150,6 @@ def _summarise_for_llm(
                         "kind": e.kind.value,
                         "subject": e.subject,
                         "summary": e.summary,
-                        "details": e.details,
                     }
                     for e in h.evidence[:MAX_EVIDENCE_PER_HYPOTHESIS]
                 ],
@@ -158,6 +173,30 @@ def _summarise_for_llm(
             }
             for e in snapshot.events[-MAX_RECENT_EVENTS:]
         ],
+        "retrieved_context": [
+            {
+                "source": s.source,
+                "kind": s.kind,
+                "title": s.title,
+                "content": s.content,
+                "related_hypothesis_ids": list(s.related_hypothesis_ids),
+            }
+            for s in retrieved[:MAX_RETRIEVED_SNIPPETS]
+        ],
+        "past_incidents": [
+            {
+                "id": inc.id,
+                "ts": inc.ts.isoformat() if inc.ts else None,
+                "similarity": inc.similarity,
+                "fingerprint": inc.fingerprint,
+                "chosen_hypothesis_ids": inc.chosen_hypothesis_ids,
+                "applied_commands": inc.applied_commands,
+                "observed_effect": inc.observed_effect,
+                "outcome": inc.outcome,
+                "notes": inc.notes,
+            }
+            for inc in past_incidents[:MAX_PAST_INCIDENTS]
+        ],
     }
 
 
@@ -165,6 +204,15 @@ def build_user_prompt(
     snapshot: Snapshot,
     hypotheses: list[Hypothesis],
     symptom: str | None = None,
+    *,
+    retrieved: list[RetrievedSnippet] | None = None,
+    past_incidents: list[Incident] | None = None,
 ) -> str:
-    payload = _summarise_for_llm(snapshot, hypotheses, symptom)
+    payload = _summarise_for_llm(
+        snapshot,
+        hypotheses,
+        symptom,
+        retrieved or [],
+        past_incidents or [],
+    )
     return json.dumps(payload, indent=2, ensure_ascii=False)

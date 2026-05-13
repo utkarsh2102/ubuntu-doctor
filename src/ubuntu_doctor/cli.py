@@ -1,12 +1,16 @@
 """Command-line entry point.
 
-Two modes:
+Subcommands:
   * `doctor`               — passive diagnosis (default).
   * `doctor why <symptom>` — active diagnosis biased toward the symptom.
+  * `doctor feedback`      — record outcome of the most recent diagnosis.
 
-Both modes share the same collectors and analyzers; the difference is
-the optional symptom passed to the ranker and the LLM. `--no-ai` skips
-the LLM call entirely and shows the deterministic output.
+Both diagnosis modes share collectors and analyzers; they differ in the
+optional symptom passed to the ranker and the LLM. `--no-ai` skips the
+LLM call entirely and shows the deterministic output. Every diagnosis
+run also retrieves on-demand RAG snippets (changelogs, AppArmor
+profiles, apport reports) and similar past incidents from the local
+feedback store, feeding both into the LLM prompt.
 """
 
 from __future__ import annotations
@@ -24,6 +28,14 @@ from ubuntu_doctor.collectors.dmesg import COLLECTOR as DMSG
 from ubuntu_doctor.collectors.dpkg_history import COLLECTOR as DPKG
 from ubuntu_doctor.collectors.journald import COLLECTOR as JRND
 from ubuntu_doctor.collectors.systemd_failed import COLLECTOR as SYSD
+from ubuntu_doctor.feedback import (
+    IncidentStore,
+    LastRunCache,
+    compute_fingerprint,
+)
+from ubuntu_doctor.feedback.lastrun import LastRun, LastRunHypothesis, now_iso
+from ubuntu_doctor.feedback.recorder import record_feedback
+from ubuntu_doctor.feedback.store import Incident
 from ubuntu_doctor.llm import LLMClient, LLMExplanation, LLMUnavailable
 from ubuntu_doctor.llm.client import (
     DEFAULT_BASE_URL,
@@ -31,7 +43,9 @@ from ubuntu_doctor.llm.client import (
     DEFAULT_TIMEOUT_SECONDS,
 )
 from ubuntu_doctor.orchestrator import build_snapshot, run_analyzers
+from ubuntu_doctor.rag import RetrievedSnippet, retrieve_for_hypotheses
 from ubuntu_doctor.ranker import rank as rank_by_symptom
+from ubuntu_doctor.snapshot import Hypothesis, Snapshot
 from ubuntu_doctor.ui import jsonout, text
 
 COLLECTORS = (DPKG, SYSD, DMSG, JRND)
@@ -75,6 +89,17 @@ def _add_common_options(parser: argparse.ArgumentParser) -> None:
         help="Skip the LLM call; deterministic analyzers only.",
     )
     parser.add_argument(
+        "--no-rag",
+        action="store_true",
+        help="Skip the RAG retrieval step (changelogs, AppArmor profiles, "
+        "apport reports). Useful if filesystem reads are slow.",
+    )
+    parser.add_argument(
+        "--no-history",
+        action="store_true",
+        help="Don't consult or write to the local feedback store.",
+    )
+    parser.add_argument(
         "--model",
         default=DEFAULT_MODEL,
         help=f"LLM model name (default: {DEFAULT_MODEL}).",
@@ -105,6 +130,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_common_options(parser)
     subparsers = parser.add_subparsers(dest="cmd")
+
     sp_why = subparsers.add_parser(
         "why",
         help="Active diagnosis: explain why a specific symptom is happening.",
@@ -120,6 +146,18 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="+",
         help="A short phrase describing the symptom you're investigating.",
     )
+
+    subparsers.add_parser(
+        "feedback",
+        help="Record outcome of the most recent diagnosis.",
+        description=(
+            "Interactive: prompts for which hypothesis was the cause, "
+            "what you ran, and what happened. Saves to the local "
+            "feedback store so future runs can use it as a few-shot "
+            "example."
+        ),
+    )
+
     return parser
 
 
@@ -133,23 +171,96 @@ def _maybe_llm_client(args: argparse.Namespace) -> LLMClient | None:
     )
 
 
+async def _retrieve(
+    args: argparse.Namespace, hypotheses: list[Hypothesis]
+) -> list[RetrievedSnippet]:
+    if args.no_rag or not hypotheses:
+        return []
+    try:
+        return await retrieve_for_hypotheses(hypotheses)
+    except Exception as exc:  # noqa: BLE001
+        # RAG failures are non-fatal; log to stderr and continue.
+        print(f"warning: RAG retrieval failed: {exc}", file=sys.stderr)
+        return []
+
+
+def _past_incidents(
+    args: argparse.Namespace, fingerprint: list[str]
+) -> tuple[IncidentStore | None, list[Incident]]:
+    if args.no_history:
+        return None, []
+    try:
+        store = IncidentStore()
+    except Exception as exc:  # noqa: BLE001
+        print(f"warning: feedback store unavailable: {exc}", file=sys.stderr)
+        return None, []
+    try:
+        return store, store.find_similar(fingerprint)
+    except Exception as exc:  # noqa: BLE001
+        print(f"warning: feedback lookup failed: {exc}", file=sys.stderr)
+        return store, []
+
+
 async def _explain(
     client: LLMClient | None,
-    snapshot,
-    hypotheses,
+    snapshot: Snapshot,
+    hypotheses: list[Hypothesis],
     symptom: str | None,
+    retrieved: list[RetrievedSnippet],
+    past_incidents: list[Incident],
 ) -> tuple[LLMExplanation | None, str | None]:
     if client is None:
         return None, None
     try:
-        explanation = await client.explain(snapshot, hypotheses, symptom)
+        explanation = await client.explain(
+            snapshot,
+            hypotheses,
+            symptom,
+            retrieved=retrieved,
+            past_incidents=past_incidents,
+        )
         return explanation, None
     except LLMUnavailable as exc:
         return None, str(exc)
 
 
-async def _run(args: argparse.Namespace) -> int:
-    symptom = " ".join(args.symptom) if getattr(args, "symptom", None) else None
+def _write_last_run(
+    args: argparse.Namespace,
+    hypotheses: list[Hypothesis],
+    symptom: str | None,
+    fingerprint: list[str],
+) -> None:
+    if args.no_history or args.json:
+        # When --json is in use, the consumer is a pipeline, not an
+        # interactive user — they'll feed `feedback` programmatically
+        # if they want to.
+        return
+    try:
+        cache = LastRunCache()
+        cache.write(
+            LastRun(
+                ts=now_iso(),
+                symptom=symptom,
+                fingerprint=fingerprint,
+                hypotheses=[
+                    LastRunHypothesis(
+                        id=h.id,
+                        title=h.title,
+                        analyzer=h.analyzer,
+                        fix_commands=list(h.fix_commands),
+                    )
+                    for h in hypotheses[:5]
+                ],
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"warning: could not write last-run cache: {exc}", file=sys.stderr)
+
+
+async def _run_diagnose(args: argparse.Namespace) -> int:
+    symptom = (
+        " ".join(args.symptom) if getattr(args, "symptom", None) else None
+    )
     now = datetime.now(timezone.utc)
     window_start = now - args.since
 
@@ -157,37 +268,44 @@ async def _run(args: argparse.Namespace) -> int:
     hypotheses = await run_analyzers(ANALYZERS, snapshot)
     hypotheses = rank_by_symptom(hypotheses, symptom)
 
-    client = _maybe_llm_client(args)
-    explanation, llm_error = await _explain(client, snapshot, hypotheses, symptom)
+    fingerprint = compute_fingerprint(hypotheses)
+    retrieved = await _retrieve(args, hypotheses)
+    _, past = _past_incidents(args, fingerprint)
 
-    if args.json:
-        print(
-            jsonout.render(
-                snapshot,
-                hypotheses,
-                explanation=explanation,
-                symptom=symptom,
-                llm_error=llm_error,
-            )
+    client = _maybe_llm_client(args)
+    explanation, llm_error = await _explain(
+        client, snapshot, hypotheses, symptom, retrieved, past
+    )
+
+    renderer = jsonout.render if args.json else text.render
+    print(
+        renderer(
+            snapshot,
+            hypotheses,
+            explanation=explanation,
+            symptom=symptom,
+            llm_error=llm_error,
+            retrieved=retrieved,
+            past_incidents=past,
         )
-    else:
-        print(
-            text.render(
-                snapshot,
-                hypotheses,
-                explanation=explanation,
-                symptom=symptom,
-                llm_error=llm_error,
-            )
-        )
+    )
+
+    _write_last_run(args, hypotheses, symptom, fingerprint)
     return 0
+
+
+def _run_feedback(_args: argparse.Namespace) -> int:
+    code, _ = record_feedback()
+    return code
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.cmd == "feedback":
+        return _run_feedback(args)
     try:
-        return asyncio.run(_run(args))
+        return asyncio.run(_run_diagnose(args))
     except KeyboardInterrupt:
         print("interrupted", file=sys.stderr)
         return 130

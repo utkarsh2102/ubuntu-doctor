@@ -7,7 +7,9 @@ from dataclasses import asdict
 from datetime import datetime
 from typing import Any
 
+from ubuntu_doctor.feedback.store import Incident
 from ubuntu_doctor.llm.types import LLMExplanation
+from ubuntu_doctor.rag.types import RetrievedSnippet
 from ubuntu_doctor.snapshot import EventKind, Hypothesis, Snapshot, TimelineEvent
 
 
@@ -26,9 +28,11 @@ def render(
     explanation: LLMExplanation | None = None,
     symptom: str | None = None,
     llm_error: str | None = None,
+    retrieved: list[RetrievedSnippet] | None = None,
+    past_incidents: list[Incident] | None = None,
 ) -> str:
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "started_at": snapshot.started_at,
         "symptom": symptom,
         "window": {
@@ -39,9 +43,38 @@ def render(
         "degradations": [asdict(d) for d in snapshot.degradations],
         "facts": snapshot.facts,
         "hypotheses": [_hypothesis(h) for h in hypotheses],
+        "retrieved_context": [_snippet(s) for s in (retrieved or [])],
+        "past_incidents": [_incident(i) for i in (past_incidents or [])],
         "llm": _llm_block(explanation, llm_error),
     }
     return json.dumps(payload, default=_default, indent=2)
+
+
+def _snippet(s: RetrievedSnippet) -> dict:
+    return {
+        "source": s.source,
+        "kind": s.kind,
+        "title": s.title,
+        "content": s.content,
+        "related_hypothesis_ids": list(s.related_hypothesis_ids),
+        "metadata": s.metadata,
+    }
+
+
+def _incident(inc: Incident) -> dict:
+    return {
+        "id": inc.id,
+        "ts": inc.ts,
+        "similarity": inc.similarity,
+        "fingerprint": inc.fingerprint,
+        "chosen_hypothesis_ids": inc.chosen_hypothesis_ids,
+        "suggested_fix_commands": inc.suggested_fix_commands,
+        "applied_commands": inc.applied_commands,
+        "observed_effect": inc.observed_effect,
+        "outcome": inc.outcome,
+        "notes": inc.notes,
+        "revisited_at": inc.revisited_at,
+    }
 
 
 def _llm_block(

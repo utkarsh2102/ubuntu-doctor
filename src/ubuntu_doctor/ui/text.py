@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import textwrap
 
+from ubuntu_doctor.feedback.store import Incident
 from ubuntu_doctor.llm.types import LLMExplanation
+from ubuntu_doctor.rag.types import RetrievedSnippet
 from ubuntu_doctor.snapshot import Hypothesis, Snapshot
 
 MAX_HYPOTHESES_DISPLAYED = 10
 MAX_EVIDENCE_DISPLAYED = 5
+MAX_SNIPPET_PREVIEW_CHARS = 400
 
 
 def render(
@@ -18,7 +21,12 @@ def render(
     explanation: LLMExplanation | None = None,
     symptom: str | None = None,
     llm_error: str | None = None,
+    retrieved: list[RetrievedSnippet] | None = None,
+    past_incidents: list[Incident] | None = None,
 ) -> str:
+    retrieved = retrieved or []
+    past_incidents = past_incidents or []
+
     lines: list[str] = []
     window = (
         f"{snapshot.window_start.isoformat()} → "
@@ -29,6 +37,15 @@ def render(
     lines.append(
         f"  Collected {len(snapshot.events)} events from {len(sources)} sources"
     )
+    if retrieved:
+        lines.append(
+            f"  Retrieved {len(retrieved)} reference snippet(s) on-demand"
+        )
+    if past_incidents:
+        lines.append(
+            f"  Matched {len(past_incidents)} similar past incident(s) from "
+            "local feedback store"
+        )
     if symptom:
         lines.append(f"  Symptom: {symptom!r}")
     lines.append("")
@@ -58,6 +75,48 @@ def render(
         lines.append(f"Likely causes ({len(hypotheses)}){suffix}:")
         for i, h in enumerate(shown, 1):
             _append_hypothesis(lines, i, h)
+
+    if past_incidents:
+        lines.append("")
+        lines.append("Similar past incidents in your feedback store:")
+        for inc in past_incidents:
+            sim = (
+                f"{inc.similarity:.0%}"
+                if inc.similarity is not None
+                else "?"
+            )
+            ts = inc.ts.isoformat() if inc.ts else "?"
+            lines.append(
+                f"  - #{inc.id} ({ts}, similarity {sim}) → outcome: {inc.outcome}"
+            )
+            if inc.observed_effect:
+                lines.append(
+                    textwrap.fill(
+                        f"observed: {inc.observed_effect}",
+                        width=72,
+                        initial_indent="      ",
+                        subsequent_indent="      ",
+                    )
+                )
+            if inc.applied_commands:
+                lines.append("      ran:")
+                for cmd in inc.applied_commands[:5]:
+                    lines.append(f"        $ {cmd}")
+                if len(inc.applied_commands) > 5:
+                    lines.append(
+                        f"        … and {len(inc.applied_commands) - 5} more"
+                    )
+
+    if retrieved:
+        lines.append("")
+        lines.append("Reference material consulted:")
+        for snippet in retrieved:
+            lines.append(f"  - [{snippet.kind}] {snippet.title}")
+            preview = snippet.content[:MAX_SNIPPET_PREVIEW_CHARS].strip()
+            if len(snippet.content) > MAX_SNIPPET_PREVIEW_CHARS:
+                preview += " …"
+            for line in preview.splitlines():
+                lines.append(f"      {line}")
 
     if snapshot.degradations:
         lines.append("")

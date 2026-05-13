@@ -189,6 +189,46 @@ async def test_explain_legacy_commands_field_maps_to_fix_commands():
     assert rh.investigation_steps == ()
 
 
+async def test_explain_strips_forbidden_fix_commands_from_model_output():
+    # The model violated the system prompt and proposed `aa-complain`.
+    # The client MUST refuse to surface it as a fix command and MUST
+    # tell the user it filtered something.
+    bad = json.dumps(
+        {
+            "summary": "",
+            "ranked_hypotheses": [
+                {
+                    "hypothesis_id": "h1",
+                    "title": "x",
+                    "why": "y",
+                    "confidence": 0.5,
+                    "fix_commands": [
+                        "sudo aa-complain /etc/apparmor.d/rsyslogd",
+                        "echo safe-command",
+                        "sudo rm -rf /",
+                    ],
+                    "investigation_steps": [],
+                    "risks": ["existing risk"],
+                }
+            ],
+            "what_i_did_not_check": "",
+        }
+    )
+
+    def fake_post(url, body, timeout):
+        return _envelope(bad)
+
+    client = LLMClient(post_fn=fake_post)
+    explanation = await client.explain(_snapshot(), [_hyp("h1")])
+    rh = explanation.ranked_hypotheses[0]
+    assert rh.fix_commands == ("echo safe-command",)
+    # The original risk plus a note about the filtering must both appear.
+    risk_text = " ".join(rh.risks)
+    assert "existing risk" in risk_text
+    assert "aa-complain" in risk_text
+    assert "rm -rf" in risk_text or "rm -rf" in risk_text.lower()
+
+
 async def test_explain_handles_unreachable_endpoint():
     def fake_post(url, body, timeout):
         raise LLMUnavailable("connection refused")

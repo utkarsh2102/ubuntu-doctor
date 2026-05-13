@@ -85,7 +85,15 @@ def test_json_renderer_includes_llm_unavailable_block_on_error(monkeypatch):
         return []
 
     class FailingClient:
-        async def explain(self, snapshot, hypotheses, symptom=None):
+        async def explain(
+            self,
+            snapshot,
+            hypotheses,
+            symptom=None,
+            *,
+            retrieved=None,
+            past_incidents=None,
+        ):
             raise LLMUnavailable("connection refused")
 
     monkeypatch.setattr(cli, "build_snapshot", empty_build_snapshot)

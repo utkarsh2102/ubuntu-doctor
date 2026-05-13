@@ -95,14 +95,31 @@ pytest -q
   - Analyzers: `postupgrade_regression`, `systemd_health`,
     `apparmor_denials`
   - LLM client against the Ubuntu Inference Snap with lenient JSON
-    parsing and graceful degradation when the endpoint is unreachable
+    parsing, graceful degradation when the endpoint is unreachable,
+    and a hard safety filter (`FORBIDDEN_FIX_PATTERNS`) that strips
+    `aa-complain`/`aa-disable`/`rm -rf /`/`dd of=/dev/...` etc. from
+    model-proposed fix_commands and surfaces the strip as a risk
   - Symptom-keyword [ranker.py](src/ubuntu_doctor/ranker.py) that
     re-ranks deterministic hypotheses for `doctor why <symptom>`
-  - CLI: `doctor` (passive) and `doctor why <symptom>` (active), both
-    accept `--no-ai`, `--json`, `--since`, `--model`, `--base-url`,
-    `--llm-timeout`
-- Not yet implemented: RAG retrieval (changelogs / NEWS / incident
-  memory), feedback store, the remaining analyzers and collectors
+  - [RAG layer](src/ubuntu_doctor/rag/) that retrieves changelog
+    entries between two versions, NEWS files, AppArmor profile bodies
+    from `/etc/apparmor.d` and `/var/lib/snapd/apparmor/profiles`, and
+    apport reports matched by ExecutablePath. Scoped per-hypothesis,
+    deduplicated across hypotheses, capped at ~2KB/snippet.
+  - [Feedback store](src/ubuntu_doctor/feedback/) — SQLite-backed local
+    incident memory at `~/.local/share/ubuntu-doctor/incidents.db`.
+    Fingerprint is a set of canonical tokens (analyzer ids, event
+    kinds, subjects); similarity is Jaccard, not vector — no extra
+    dependency. Past incidents above 0.2 similarity are injected into
+    the LLM prompt as few-shot context. `~/.cache/ubuntu-doctor/last_run.json`
+    cache carries the most recent diagnosis so `doctor feedback` knows
+    what to talk about.
+  - CLI: `doctor` (passive), `doctor why <symptom>` (active), and
+    `doctor feedback` (interactive incident recorder). All accept
+    `--no-ai`, `--json`, `--since`, `--model`, `--base-url`,
+    `--llm-timeout`; diagnose modes additionally accept `--no-rag` and
+    `--no-history` for opt-out of the new subsystems.
+- Not yet implemented: the remaining analyzers and collectors
   (`apt_log`, `snap_changes`, `hardware`, `cache_state`, `diskspace`,
   and analyzers `held_packages`, `firmware_mismatch`, `oom_attribution`,
   `snap_refresh_breakage`, `irq_driver_regression`, `cache_health`).

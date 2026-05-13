@@ -24,6 +24,7 @@ import urllib.error
 import urllib.request
 from typing import Any, Callable
 
+from ubuntu_doctor.feedback.store import Incident
 from ubuntu_doctor.llm.prompts import (
     PROMPT_VERSION,
     SYSTEM_PROMPT,
@@ -34,13 +35,33 @@ from ubuntu_doctor.llm.types import (
     LLMUnavailable,
     RankedHypothesis,
 )
+from ubuntu_doctor.rag.types import RetrievedSnippet
 from ubuntu_doctor.snapshot import Hypothesis, Snapshot
 
 DEFAULT_BASE_URL = "http://localhost:8336/v1"
 DEFAULT_MODEL = "gemma:e4b"
 DEFAULT_TIMEOUT_SECONDS = 120
-DEFAULT_MAX_TOKENS = 2048
+DEFAULT_MAX_TOKENS = 4096
 DEFAULT_TEMPERATURE = 0.2
+
+# Hard safety filter: regardless of what the LLM produces, these
+# command patterns must never appear in `fix_commands`. They either
+# silence security (`aa-complain`, `aa-disable`) or are destructive
+# (`rm -rf /`, `dd of=/dev/sd*`). The system prompt forbids them, but
+# small local models drop instructions under load — so we belt-and-
+# braces it here. Matches case-insensitively as a substring on the
+# trimmed command. Anything stripped goes to `risks` so the user
+# knows we filtered something.
+FORBIDDEN_FIX_PATTERNS: tuple[str, ...] = (
+    "aa-complain",
+    "aa-disable",
+    "rm -rf /",
+    "dd of=/dev/",
+    "mkfs",
+    "shutdown",
+    "reboot ",
+    ":(){:|:&};:",
+)
 
 PostFn = Callable[[str, dict[str, Any], float], dict[str, Any]]
 
@@ -69,6 +90,23 @@ def _default_post(url: str, body: dict[str, Any], timeout: float) -> dict[str, A
         raise LLMUnavailable(
             f"LLM endpoint returned non-JSON envelope: {payload[:200]!r}"
         ) from exc
+
+
+def _filter_forbidden(
+    commands: list[str],
+) -> tuple[tuple[str, ...], list[str]]:
+    """Split commands into (kept, stripped). Anything matching a
+    `FORBIDDEN_FIX_PATTERNS` substring (case-insensitive) is moved to
+    the stripped bucket so the caller can surface it as a risk."""
+    kept: list[str] = []
+    stripped: list[str] = []
+    for cmd in commands:
+        lc = cmd.lower()
+        if any(pat in lc for pat in FORBIDDEN_FIX_PATTERNS):
+            stripped.append(cmd)
+        else:
+            kept.append(cmd)
+    return tuple(kept), stripped
 
 
 def _extract_json_object(content: str) -> dict[str, Any]:
@@ -136,11 +174,20 @@ def _build_explanation(
         raw_fix = item.get("fix_commands")
         if raw_fix is None:
             raw_fix = item.get("commands", [])
-        fix_commands = tuple(str(c) for c in (raw_fix or []) if c)
+        raw_fix_list = [str(c) for c in (raw_fix or []) if c]
+        fix_commands, stripped_fixes = _filter_forbidden(raw_fix_list)
         investigation_steps = tuple(
             str(s) for s in (item.get("investigation_steps") or []) if s
         )
-        risks = tuple(str(r) for r in (item.get("risks") or []) if r)
+        raw_risks = [str(r) for r in (item.get("risks") or []) if r]
+        if stripped_fixes:
+            raw_risks.append(
+                "ubuntu-doctor refused to forward "
+                f"{len(stripped_fixes)} command(s) the LLM proposed because "
+                "they silence security or are destructive: "
+                + "; ".join(stripped_fixes)
+            )
+        risks = tuple(raw_risks)
         ranked.append(
             RankedHypothesis(
                 hypothesis_id=hid,
@@ -200,8 +247,17 @@ class LLMClient:
         snapshot: Snapshot,
         hypotheses: list[Hypothesis],
         symptom: str | None = None,
+        *,
+        retrieved: list[RetrievedSnippet] | None = None,
+        past_incidents: list[Incident] | None = None,
     ) -> LLMExplanation:
-        user_prompt = build_user_prompt(snapshot, hypotheses, symptom)
+        user_prompt = build_user_prompt(
+            snapshot,
+            hypotheses,
+            symptom,
+            retrieved=retrieved,
+            past_incidents=past_incidents,
+        )
         body = self._request_body(user_prompt)
         envelope = await asyncio.to_thread(
             self._post, self._completions_url(), body, self.timeout
