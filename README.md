@@ -77,8 +77,24 @@ errors at next boot, exact PCI/USB IDs of the affected card.
 
 Requires Python 3.12+.
 
+### From PyPI
+
 ```bash
-git clone <this-repo> ubuntu-doctor
+pip3 install ubuntu-doctor
+ubuntu-doctor --help
+```
+
+If `pip3 install` complains about an externally-managed environment on
+recent Ubuntu releases, either use a venv (below) or pass `--user`:
+
+```bash
+pip3 install --user ubuntu-doctor
+```
+
+### From source (development)
+
+```bash
+git clone https://github.com/utkarsh2102/ubuntu-doctor.git
 cd ubuntu-doctor
 
 python3 -m venv .venv
@@ -399,6 +415,27 @@ added without touching any existing code — see `collectors/base.py` and
 `analyzers/base.py` for the ABCs, then register the new id in
 `COLLECTORS` / `ANALYZER_REGISTRY` in `cli.py`.
 
+### Releasing to PyPI
+
+```bash
+# install build + twine
+pip install -e '.[publish]'
+
+# bump version in pyproject.toml, then:
+rm -rf dist build
+python -m build           # produces sdist + wheel in dist/
+twine check dist/*        # validate metadata renders on PyPI
+
+# dry-run on TestPyPI first
+twine upload --repository testpypi dist/*
+pip install -i https://test.pypi.org/simple/ ubuntu-doctor
+
+# then the real thing
+twine upload dist/*
+```
+
+Tag the release in git after a successful upload: `git tag v0.1 && git push --tags`.
+
 ---
 
 ## Design decisions
@@ -461,4 +498,5 @@ See [docs/plan.md](docs/plan.md) for the full design and backlog.
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) file for authorship.
+GNU General Public License v3.0 or later. See [LICENSE](LICENSE) for the
+full text and authorship.
