@@ -104,6 +104,108 @@ def test_json_renderer_includes_llm_unavailable_block_on_error(monkeypatch):
     assert rc == 0
 
 
+def test_select_analyzers_default_returns_all():
+    from ubuntu_doctor.cli import ANALYZER_REGISTRY, select_analyzers
+
+    selected = select_analyzers(None, None)
+    assert {a.id for a in selected} == set(ANALYZER_REGISTRY)
+
+
+def test_select_analyzers_allowlist_filters():
+    from ubuntu_doctor.cli import select_analyzers
+
+    selected = select_analyzers(
+        ["postupgrade_regression", "apparmor_denials"], None
+    )
+    assert {a.id for a in selected} == {
+        "postupgrade_regression",
+        "apparmor_denials",
+    }
+
+
+def test_select_analyzers_skip_removes_from_default():
+    from ubuntu_doctor.cli import ANALYZER_REGISTRY, select_analyzers
+
+    selected = select_analyzers(None, ["systemd_health"])
+    assert "systemd_health" not in {a.id for a in selected}
+    assert len(selected) == len(ANALYZER_REGISTRY) - 1
+
+
+def test_select_analyzers_allowlist_then_skip():
+    from ubuntu_doctor.cli import select_analyzers
+
+    selected = select_analyzers(
+        ["postupgrade_regression", "systemd_health", "apparmor_denials"],
+        ["systemd_health"],
+    )
+    assert {a.id for a in selected} == {
+        "postupgrade_regression",
+        "apparmor_denials",
+    }
+
+
+def test_select_analyzers_empty_allowlist_runs_none():
+    from ubuntu_doctor.cli import select_analyzers
+
+    assert select_analyzers([], None) == ()
+
+
+def test_select_analyzers_unknown_id_raises():
+    from ubuntu_doctor.cli import select_analyzers
+
+    with pytest.raises(SystemExit) as excinfo:
+        select_analyzers(["does_not_exist"], None)
+    assert "does_not_exist" in str(excinfo.value)
+
+
+def test_select_analyzers_unknown_in_skip_raises():
+    from ubuntu_doctor.cli import select_analyzers
+
+    with pytest.raises(SystemExit) as excinfo:
+        select_analyzers(None, ["nope"])
+    assert "nope" in str(excinfo.value)
+
+
+def test_parse_analyzer_list_handles_whitespace_and_empties():
+    from ubuntu_doctor.cli import parse_analyzer_list
+
+    assert parse_analyzer_list("a, b ,,c") == ["a", "b", "c"]
+    assert parse_analyzer_list("") == []
+
+
+def test_analyzers_flag_threads_through_to_run_analyzers(monkeypatch, capsys):
+    from ubuntu_doctor import cli
+    from ubuntu_doctor.snapshot import Snapshot
+
+    async def empty_build_snapshot(collectors, window_start, window_end):
+        return Snapshot(
+            started_at=window_end, window_start=window_start, window_end=window_end
+        )
+
+    seen: dict[str, tuple[str, ...]] = {}
+
+    async def capturing_run_analyzers(analyzers, snapshot):
+        seen["ids"] = tuple(a.id for a in analyzers)
+        return []
+
+    monkeypatch.setattr(cli, "build_snapshot", empty_build_snapshot)
+    monkeypatch.setattr(cli, "run_analyzers", capturing_run_analyzers)
+
+    rc = cli.main(
+        [
+            "--no-ai",
+            "--json",
+            "--no-rag",
+            "--no-history",
+            "--analyzers",
+            "postupgrade_regression,apparmor_denials",
+        ]
+    )
+    capsys.readouterr()
+    assert rc == 0
+    assert set(seen["ids"]) == {"postupgrade_regression", "apparmor_denials"}
+
+
 def test_no_ai_skips_llm_call(monkeypatch, capsys):
     from ubuntu_doctor import cli
     from ubuntu_doctor.snapshot import Snapshot

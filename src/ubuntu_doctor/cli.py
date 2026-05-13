@@ -22,6 +22,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 from ubuntu_doctor.analyzers.apparmor_denials import ANALYZER as AAD
+from ubuntu_doctor.analyzers.base import Analyzer
 from ubuntu_doctor.analyzers.cache_health import ANALYZER as CH
 from ubuntu_doctor.analyzers.firmware_mismatch import ANALYZER as FWM
 from ubuntu_doctor.analyzers.held_packages import ANALYZER as HP
@@ -62,8 +63,11 @@ from ubuntu_doctor.ui import jsonout, text
 
 COLLECTORS = (DPKG, SYSD, DMSG, JRND, APTL, SNAP, AAUD, HW, DS, CS)
 # Order matters only for output stability — analyzers run concurrently
-# under the orchestrator.
-ANALYZERS = (PUR, SYSH, AAD, HP, CH, OOMA, FWM, SRB, IRQ)
+# under the orchestrator. Keyed by analyzer id so the CLI can selectively
+# enable/disable individual analyzers by name.
+ANALYZER_REGISTRY: dict[str, Analyzer] = {
+    a.id: a for a in (PUR, SYSH, AAD, HP, CH, OOMA, FWM, SRB, IRQ)
+}
 
 _SINCE_PATTERN = re.compile(r"^(\d+)([smhdw])$")
 _SINCE_UNITS = {
@@ -83,6 +87,37 @@ def parse_since(value: str) -> timedelta:
         )
     amount, unit = int(match.group(1)), match.group(2)
     return timedelta(**{_SINCE_UNITS[unit]: amount})
+
+
+def parse_analyzer_list(value: str) -> list[str]:
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def select_analyzers(
+    enabled: list[str] | None,
+    skipped: list[str] | None,
+) -> tuple[Analyzer, ...]:
+    """Apply --analyzers (allowlist) then --skip-analyzers (denylist).
+
+    Unknown ids on either side are a hard error: the user almost
+    certainly typo'd, and silently running everything would mask that.
+    """
+    known = set(ANALYZER_REGISTRY)
+    requested = set(enabled) if enabled is not None else set(known)
+    skipped_set = set(skipped or ())
+    unknown = (requested | skipped_set) - known
+    if unknown:
+        raise SystemExit(
+            "unknown analyzer(s): "
+            f"{', '.join(sorted(unknown))}. "
+            f"Available: {', '.join(sorted(known))}."
+        )
+    selected_ids = requested - skipped_set
+    return tuple(
+        analyzer
+        for aid, analyzer in ANALYZER_REGISTRY.items()
+        if aid in selected_ids
+    )
 
 
 def _add_common_options(parser: argparse.ArgumentParser) -> None:
@@ -112,6 +147,27 @@ def _add_common_options(parser: argparse.ArgumentParser) -> None:
         "--no-history",
         action="store_true",
         help="Don't consult or write to the local feedback store.",
+    )
+    analyzer_ids = ", ".join(sorted(ANALYZER_REGISTRY))
+    parser.add_argument(
+        "--analyzers",
+        type=parse_analyzer_list,
+        default=None,
+        metavar="LIST",
+        help=(
+            "Comma-separated allowlist of analyzers to run. "
+            f"Default: all. Available: {analyzer_ids}."
+        ),
+    )
+    parser.add_argument(
+        "--skip-analyzers",
+        type=parse_analyzer_list,
+        default=None,
+        metavar="LIST",
+        help=(
+            "Comma-separated list of analyzers to skip. Applied after "
+            "--analyzers."
+        ),
     )
     parser.add_argument(
         "--model",
@@ -278,8 +334,9 @@ async def _run_diagnose(args: argparse.Namespace) -> int:
     now = datetime.now(timezone.utc)
     window_start = now - args.since
 
+    analyzers = select_analyzers(args.analyzers, args.skip_analyzers)
     snapshot = await build_snapshot(COLLECTORS, window_start, now)
-    hypotheses = await run_analyzers(ANALYZERS, snapshot)
+    hypotheses = await run_analyzers(analyzers, snapshot)
     hypotheses = rank_by_symptom(hypotheses, symptom)
 
     fingerprint = compute_fingerprint(hypotheses)
