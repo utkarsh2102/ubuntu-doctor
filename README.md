@@ -32,6 +32,8 @@ Top hypotheses:
 commands — nothing is ever executed without you. The LLM has no tool access:
 it receives a structured snapshot and returns text.
 
+[live-demo.webm](https://github.com/user-attachments/assets/a6468793-71d2-473f-a308-0191e598cced)
+
 ---
 
 ## Why this exists
