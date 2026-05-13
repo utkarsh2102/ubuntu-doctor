@@ -4,10 +4,18 @@ from __future__ import annotations
 
 import textwrap
 
+from ubuntu_doctor.llm.types import LLMExplanation
 from ubuntu_doctor.snapshot import Hypothesis, Snapshot
 
 
-def render(snapshot: Snapshot, hypotheses: list[Hypothesis]) -> str:
+def render(
+    snapshot: Snapshot,
+    hypotheses: list[Hypothesis],
+    *,
+    explanation: LLMExplanation | None = None,
+    symptom: str | None = None,
+    llm_error: str | None = None,
+) -> str:
     lines: list[str] = []
     window = (
         f"{snapshot.window_start.isoformat()} → "
@@ -18,7 +26,18 @@ def render(snapshot: Snapshot, hypotheses: list[Hypothesis]) -> str:
     lines.append(
         f"  Collected {len(snapshot.events)} events from {len(sources)} sources"
     )
+    if symptom:
+        lines.append(f"  Symptom: {symptom!r}")
     lines.append("")
+
+    if explanation is not None:
+        _append_llm_explanation(lines, explanation, hypotheses)
+        lines.append("")
+        lines.append("Underlying deterministic findings:")
+    elif llm_error:
+        lines.append(f"LLM unavailable — {llm_error}")
+        lines.append("Falling back to deterministic findings only.")
+        lines.append("")
 
     if not hypotheses:
         lines.append("No correlations found.")
@@ -29,40 +48,7 @@ def render(snapshot: Snapshot, hypotheses: list[Hypothesis]) -> str:
     else:
         lines.append(f"Likely causes ({len(hypotheses)}):")
         for i, h in enumerate(hypotheses, 1):
-            lines.append("")
-            lines.append(f"  [{i}] {h.title}  (confidence {h.confidence:.2f})")
-            lines.append(f"      analyzer: {h.analyzer}")
-            if h.rationale:
-                lines.append(
-                    textwrap.fill(
-                        h.rationale,
-                        width=72,
-                        initial_indent="      ",
-                        subsequent_indent="      ",
-                    )
-                )
-            if h.evidence:
-                lines.append("      evidence:")
-                for ev in h.evidence:
-                    lines.append(
-                        f"        - [{ev.ts.isoformat()}] {ev.kind.value}: "
-                        f"{ev.summary}"
-                    )
-            if h.commands:
-                lines.append("      suggested commands (NOT executed):")
-                for cmd in h.commands:
-                    lines.append(f"        $ {cmd}")
-            if h.risks:
-                lines.append("      risks:")
-                for risk in h.risks:
-                    lines.append(
-                        textwrap.fill(
-                            risk,
-                            width=72,
-                            initial_indent="        - ",
-                            subsequent_indent="          ",
-                        )
-                    )
+            _append_hypothesis(lines, i, h)
 
     if snapshot.degradations:
         lines.append("")
@@ -73,3 +59,107 @@ def render(snapshot: Snapshot, hypotheses: list[Hypothesis]) -> str:
                 lines.append(f"      to unlock: {deg.fix_command}")
 
     return "\n".join(lines)
+
+
+def _append_llm_explanation(
+    lines: list[str],
+    explanation: LLMExplanation,
+    hypotheses: list[Hypothesis],
+) -> None:
+    lines.append(f"ubuntu-doctor — diagnosis (model: {explanation.model})")
+    if explanation.summary:
+        lines.append(
+            textwrap.fill(
+                explanation.summary,
+                width=78,
+                initial_indent="  ",
+                subsequent_indent="  ",
+            )
+        )
+    by_id = {h.id: h for h in hypotheses}
+    if explanation.ranked_hypotheses:
+        lines.append("")
+        lines.append("Top hypotheses:")
+        for i, rh in enumerate(explanation.ranked_hypotheses, 1):
+            lines.append("")
+            lines.append(
+                f"  [{i}] {rh.title}  (LLM confidence {rh.confidence:.2f})"
+            )
+            origin = by_id.get(rh.hypothesis_id)
+            if origin is not None:
+                lines.append(
+                    f"      origin: {origin.analyzer} "
+                    f"(rule confidence {origin.confidence:.2f})"
+                )
+            if rh.why:
+                lines.append(
+                    textwrap.fill(
+                        rh.why,
+                        width=72,
+                        initial_indent="      ",
+                        subsequent_indent="      ",
+                    )
+                )
+            if rh.commands:
+                lines.append("      suggested commands (NOT executed):")
+                for cmd in rh.commands:
+                    lines.append(f"        $ {cmd}")
+            if rh.risks:
+                lines.append("      risks:")
+                for risk in rh.risks:
+                    lines.append(
+                        textwrap.fill(
+                            risk,
+                            width=72,
+                            initial_indent="        - ",
+                            subsequent_indent="          ",
+                        )
+                    )
+    if explanation.what_i_did_not_check:
+        lines.append("")
+        lines.append("What the LLM did not check:")
+        lines.append(
+            textwrap.fill(
+                explanation.what_i_did_not_check,
+                width=78,
+                initial_indent="  ",
+                subsequent_indent="  ",
+            )
+        )
+
+
+def _append_hypothesis(lines: list[str], i: int, h: Hypothesis) -> None:
+    lines.append("")
+    lines.append(f"  [{i}] {h.title}  (confidence {h.confidence:.2f})")
+    lines.append(f"      analyzer: {h.analyzer}")
+    if h.rationale:
+        lines.append(
+            textwrap.fill(
+                h.rationale,
+                width=72,
+                initial_indent="      ",
+                subsequent_indent="      ",
+            )
+        )
+    if h.evidence:
+        lines.append("      evidence:")
+        for ev in h.evidence:
+            lines.append(
+                f"        - [{ev.ts.isoformat()}] {ev.kind.value}: "
+                f"{ev.summary}"
+            )
+    if h.commands:
+        lines.append("      suggested commands (NOT executed):")
+        for cmd in h.commands:
+            lines.append(f"        $ {cmd}")
+    if h.risks:
+        lines.append("      risks:")
+        for risk in h.risks:
+            lines.append(
+                textwrap.fill(
+                    risk,
+                    width=72,
+                    initial_indent="        - ",
+                    subsequent_indent="          ",
+                )
+            )

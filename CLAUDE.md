@@ -32,7 +32,9 @@ CLI → Orchestrator → Collectors (parallel, async)
   objects with evidence pointers, suggested commands (as text), and risks.
 - **LLM** is reached over OpenAI-compatible HTTP at
   `http://localhost:8336/v1` (Ubuntu Inference Snap). Default model:
-  `gemma4:e4b`. Endpoint + model are config knobs.
+  `gemma:e4b` (the local endpoint accepts either `gemma:e4b` or the
+  canonical id `gemma4-e4b-q4-k-m` — both route to the same loaded
+  model). Endpoint and model are config knobs (`--base-url`, `--model`).
 
 ## Hard rules
 
@@ -88,12 +90,19 @@ pytest -q
 
 ## Status
 
-- v1 vertical slice landed: `dpkg_history` + `systemd_failed`
-  collectors → `postupgrade_regression` + `systemd_health` analyzers
-  → text/JSON renderer. CLI supports `--no-ai`, `--json`, `--since`.
-- LLM client, RAG retrieval, feedback store, the remaining analyzers,
-  and the remaining collectors are not yet implemented. See
-  [docs/plan.md](docs/plan.md) for the full backlog.
+- v1 in progress. Landed so far:
+  - Collectors: `dpkg_history`, `systemd_failed`
+  - Analyzers: `postupgrade_regression`, `systemd_health`
+  - LLM client against the Ubuntu Inference Snap with lenient JSON
+    parsing and graceful degradation when the endpoint is unreachable
+  - Symptom-keyword [ranker.py](src/ubuntu_doctor/ranker.py) that
+    re-ranks deterministic hypotheses for `doctor why <symptom>`
+  - CLI: `doctor` (passive) and `doctor why <symptom>` (active), both
+    accept `--no-ai`, `--json`, `--since`, `--model`, `--base-url`,
+    `--llm-timeout`
+- Not yet implemented: RAG retrieval (changelogs / NEWS / incident
+  memory), feedback store, the remaining analyzers and collectors.
+  See [docs/plan.md](docs/plan.md) for the full backlog.
 
 **Window semantics:** `--since` filters historical events (package
 upgrades, past service failures). It does NOT filter

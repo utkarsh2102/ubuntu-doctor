@@ -29,12 +29,13 @@ This plan reflects four decisions confirmed with the user:
 
 ## Corrections to upstream assumptions
 
-- **Model: `gemma4:e4b` is the agreed default.** (My earlier note that the
-  name didn't exist was wrong — my training cutoff predates its release.)
-  I'd still benchmark it against a larger sibling from the Inference Snap
-  catalogue on representative snapshots: 4B-class models can struggle with
-  multi-source correlation when the structured input is long. Model name is
-  a config knob (`--model`, env var, config file) so swaps are cheap.
+- **Model: `gemma:e4b` is the agreed default** (confirmed live against
+  the user's Inference Snap; the endpoint also accepts the canonical
+  id `gemma4-e4b-q4-k-m`, which is the same loaded model). I'd still
+  benchmark against a larger sibling on representative snapshots: 4B-
+  class models can struggle with multi-source correlation when the
+  structured input is long. Model name is a config knob (`--model`,
+  env var, config file) so swaps are cheap.
 - **Multi-agent (one LLM agent per plugin) is the wrong shape.** Local
   inference is serialised; N agents = N × latency, no accuracy gain. One
   call per `doctor` run with all collector output structured into the prompt
@@ -318,7 +319,7 @@ doctor --json                 # machine-readable
 doctor --no-ai                # deterministic only, skip LLM
 doctor --deep                 # allow per-analyzer follow-up LLM calls
 doctor --since <when>         # override default window
-doctor --model <name>         # override default gemma4:e4b
+doctor --model <name>         # override default gemma:e4b
 doctor --base-url <url>       # override OpenAI-compatible endpoint
 doctor doctor                 # report ubuntu-doctor's own health (collectors,
                               # snap reachability, cache size)
@@ -381,7 +382,7 @@ orchestration, GUI.
 
 ## Open follow-ups (not blockers for v1)
 
-- Benchmark `gemma4:e4b` against a larger Inference Snap sibling on
+- Benchmark `gemma:e4b` against a larger Inference Snap sibling on
   representative snapshots before the prompt is finalised — the
   structured-output budget may force a larger model on long timelines.
 - Decide whether the `--deep` mode follow-up calls should be analyzer-
