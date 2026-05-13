@@ -1,0 +1,9 @@
+2026-05-01 08:14:00 startup archives unpack
+2026-05-01 08:14:01 install linux-image-6.8.0-50-generic:amd64 <none> 6.8.0-50.51
+2026-05-01 08:14:03 status half-installed linux-image-6.8.0-50-generic:amd64 6.8.0-50.51
+2026-05-01 08:14:05 upgrade linux-firmware:amd64 20240318-0ubuntu3.7 20240318-0ubuntu3.8
+2026-05-01 08:14:07 configure linux-firmware:amd64 20240318-0ubuntu3.8 <none>
+2026-05-01 08:14:10 upgrade pulseaudio:amd64 1:16.1+dfsg1-2ubuntu10 1:16.1+dfsg1-2ubuntu11
+2026-05-09 09:00:00 install htop:amd64 <none> 3.3.0-3
+2026-05-09 09:00:00 trigproc man-db:amd64 2.12.0-3 <none>
+2026-05-12 11:22:33 remove libfoo:amd64 1.2.3-4 <none>

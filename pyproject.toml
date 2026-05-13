@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ubuntu-doctor"
+version = "0.0.1"
+description = "Diagnose Ubuntu system problems with a local LLM"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "GPL-3.0-or-later" }
+authors = [{ name = "Oliver Reiche", email = "oliver.reiche@canonical.com" }]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+]
+
+[project.scripts]
+doctor = "ubuntu_doctor.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ubuntu_doctor"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
