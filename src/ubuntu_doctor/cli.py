@@ -14,13 +14,14 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 from ubuntu_doctor.analyzers.postupgrade_regression import ANALYZER as PUR
+from ubuntu_doctor.analyzers.systemd_health import ANALYZER as SYSH
 from ubuntu_doctor.collectors.dpkg_history import COLLECTOR as DPKG
 from ubuntu_doctor.collectors.systemd_failed import COLLECTOR as SYSD
 from ubuntu_doctor.orchestrator import build_snapshot, run_analyzers
 from ubuntu_doctor.ui import jsonout, text
 
 COLLECTORS = (DPKG, SYSD)
-ANALYZERS = (PUR,)
+ANALYZERS = (PUR, SYSH)
 
 _SINCE_PATTERN = re.compile(r"^(\d+)([smhdw])$")
 _SINCE_UNITS = {

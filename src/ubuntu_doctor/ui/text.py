@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import textwrap
+
 from ubuntu_doctor.snapshot import Hypothesis, Snapshot
 
 
@@ -31,8 +33,14 @@ def render(snapshot: Snapshot, hypotheses: list[Hypothesis]) -> str:
             lines.append(f"  [{i}] {h.title}  (confidence {h.confidence:.2f})")
             lines.append(f"      analyzer: {h.analyzer}")
             if h.rationale:
-                for line in _wrap(h.rationale, width=72, indent="      "):
-                    lines.append(line)
+                lines.append(
+                    textwrap.fill(
+                        h.rationale,
+                        width=72,
+                        initial_indent="      ",
+                        subsequent_indent="      ",
+                    )
+                )
             if h.evidence:
                 lines.append("      evidence:")
                 for ev in h.evidence:
@@ -47,8 +55,14 @@ def render(snapshot: Snapshot, hypotheses: list[Hypothesis]) -> str:
             if h.risks:
                 lines.append("      risks:")
                 for risk in h.risks:
-                    for line in _wrap(risk, width=68, indent="        - "):
-                        lines.append(line)
+                    lines.append(
+                        textwrap.fill(
+                            risk,
+                            width=72,
+                            initial_indent="        - ",
+                            subsequent_indent="          ",
+                        )
+                    )
 
     if snapshot.degradations:
         lines.append("")
@@ -59,18 +73,3 @@ def render(snapshot: Snapshot, hypotheses: list[Hypothesis]) -> str:
                 lines.append(f"      to unlock: {deg.fix_command}")
 
     return "\n".join(lines)
-
-
-def _wrap(text: str, *, width: int, indent: str) -> list[str]:
-    words = text.split()
-    out: list[str] = []
-    current = indent
-    for word in words:
-        if len(current) + len(word) + 1 > width and current.strip():
-            out.append(current.rstrip())
-            current = indent + word
-        else:
-            current += (" " if current != indent else "") + word
-    if current.strip():
-        out.append(current.rstrip())
-    return out

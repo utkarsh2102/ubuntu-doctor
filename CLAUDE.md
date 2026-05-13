@@ -88,9 +88,16 @@ pytest -q
 
 ## Status
 
-- v1 vertical slice in progress: `dpkg_history` + `systemd_failed`
-  collectors → `postupgrade_regression` analyzer → text/JSON renderer.
-  CLI supports `--no-ai`, `--json`, `--since`.
-- LLM client, RAG retrieval, feedback store, the remaining six
-  analyzers, and the remaining seven collectors are not yet implemented.
-  See [docs/plan.md](docs/plan.md) for the full backlog.
+- v1 vertical slice landed: `dpkg_history` + `systemd_failed`
+  collectors → `postupgrade_regression` + `systemd_health` analyzers
+  → text/JSON renderer. CLI supports `--no-ai`, `--json`, `--since`.
+- LLM client, RAG retrieval, feedback store, the remaining analyzers,
+  and the remaining collectors are not yet implemented. See
+  [docs/plan.md](docs/plan.md) for the full backlog.
+
+**Window semantics:** `--since` filters historical events (package
+upgrades, past service failures). It does NOT filter
+*current-state facts* like "this unit is currently failed" — those are
+emitted regardless of when they last exited. The `systemd_failed`
+collector documents this explicitly; new state-fact collectors should
+follow the same pattern.

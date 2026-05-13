@@ -120,6 +120,43 @@ async def test_systemctl_failure_degrades_gracefully():
     assert result.degradation.collector == "systemd_failed"
 
 
+async def test_window_does_not_filter_currently_failed_units():
+    # Regression: "currently failed" is a state-of-now fact, not a
+    # historical event. A unit that's been failed for months must still
+    # be emitted even when the user passes a short --since.
+    canned = {
+        ("systemctl", "--failed", "--no-legend", "--plain", "--no-pager"): (
+            0,
+            "ancient.service loaded failed failed Ancient Service\n",
+        ),
+        (
+            "systemctl",
+            "show",
+            "ancient.service",
+            "--property=ActiveExitTimestamp,Result,LoadState,Description",
+            "--no-pager",
+        ): (
+            0,
+            "ActiveExitTimestamp=Sat 2024-01-01 00:00:00 UTC\n"
+            "Result=exit-code\n"
+            "LoadState=loaded\n"
+            "Description=Ancient Service\n",
+        ),
+    }
+
+    async def fake_run(args):
+        return canned[tuple(args)]
+
+    collector = SystemdFailedCollector(run_command=fake_run)
+    result = await collector.collect(
+        window_start=datetime(2026, 5, 1, tzinfo=timezone.utc),
+        window_end=datetime(2026, 5, 13, tzinfo=timezone.utc),
+    )
+    assert len(result.events) == 1
+    # Original ts preserved even though it's well before window_start.
+    assert result.events[0].ts == datetime(2024, 1, 1, tzinfo=timezone.utc)
+
+
 async def test_unparseable_timestamp_falls_back_to_now():
     canned = {
         ("systemctl", "--failed", "--no-legend", "--plain", "--no-pager"): (

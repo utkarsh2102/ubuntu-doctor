@@ -15,6 +15,13 @@ If the timestamp can't be parsed, the event is timestamped at the
 collector's run time so it still participates in correlation, with the
 unparsed value preserved in `details`.
 
+**Window handling:** this collector reports a *current-state fact*, not
+historical events. A unit that's failed right now is relevant regardless
+of how long ago it last exited, so we ignore the requested
+`window_start` / `window_end` and emit every currently-failed unit.
+Analyzers can still use the per-event timestamp to filter if they care
+(e.g. postupgrade_regression only correlates within 24h of an upgrade).
+
 This collector typically runs unprivileged; user-scoped units may not
 appear without `--user`, and that's out of scope for v1.
 """
@@ -136,9 +143,9 @@ class SystemdFailedCollector(Collector):
         for unit, (show_rc, show_out) in zip(units, shows, strict=True):
             props = parse_show_output(show_out) if show_rc == 0 else {}
             ts = parse_systemctl_timestamp(props.get("ActiveExitTimestamp", ""))
+            # Intentionally NOT filtering by window: "currently failed" is a
+            # current-state fact, not a historical event. See module docstring.
             event_ts = ts or now
-            if event_ts < window_start or event_ts > window_end:
-                continue
             description = props.get("Description", unit)
             result = props.get("Result", "unknown")
             events.append(
