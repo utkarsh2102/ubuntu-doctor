@@ -7,6 +7,9 @@ import textwrap
 from ubuntu_doctor.llm.types import LLMExplanation
 from ubuntu_doctor.snapshot import Hypothesis, Snapshot
 
+MAX_HYPOTHESES_DISPLAYED = 10
+MAX_EVIDENCE_DISPLAYED = 5
+
 
 def render(
     snapshot: Snapshot,
@@ -46,8 +49,14 @@ def render(
             "LLM enabled, or `doctor why <symptom>`, to dig deeper.)"
         )
     else:
-        lines.append(f"Likely causes ({len(hypotheses)}):")
-        for i, h in enumerate(hypotheses, 1):
+        shown = hypotheses[:MAX_HYPOTHESES_DISPLAYED]
+        suffix = (
+            f" (showing top {MAX_HYPOTHESES_DISPLAYED})"
+            if len(hypotheses) > MAX_HYPOTHESES_DISPLAYED
+            else ""
+        )
+        lines.append(f"Likely causes ({len(hypotheses)}){suffix}:")
+        for i, h in enumerate(shown, 1):
             _append_hypothesis(lines, i, h)
 
     if snapshot.degradations:
@@ -143,11 +152,14 @@ def _append_hypothesis(lines: list[str], i: int, h: Hypothesis) -> None:
         )
     if h.evidence:
         lines.append("      evidence:")
-        for ev in h.evidence:
+        for ev in h.evidence[:MAX_EVIDENCE_DISPLAYED]:
             lines.append(
                 f"        - [{ev.ts.isoformat()}] {ev.kind.value}: "
                 f"{ev.summary}"
             )
+        remaining = len(h.evidence) - MAX_EVIDENCE_DISPLAYED
+        if remaining > 0:
+            lines.append(f"        … and {remaining} more")
     if h.commands:
         lines.append("      suggested commands (NOT executed):")
         for cmd in h.commands:

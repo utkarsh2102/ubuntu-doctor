@@ -91,8 +91,9 @@ pytest -q
 ## Status
 
 - v1 in progress. Landed so far:
-  - Collectors: `dpkg_history`, `systemd_failed`
-  - Analyzers: `postupgrade_regression`, `systemd_health`
+  - Collectors: `dpkg_history`, `systemd_failed`, `dmesg`, `journald`
+  - Analyzers: `postupgrade_regression`, `systemd_health`,
+    `apparmor_denials`
   - LLM client against the Ubuntu Inference Snap with lenient JSON
     parsing and graceful degradation when the endpoint is unreachable
   - Symptom-keyword [ranker.py](src/ubuntu_doctor/ranker.py) that
@@ -101,7 +102,10 @@ pytest -q
     accept `--no-ai`, `--json`, `--since`, `--model`, `--base-url`,
     `--llm-timeout`
 - Not yet implemented: RAG retrieval (changelogs / NEWS / incident
-  memory), feedback store, the remaining analyzers and collectors.
+  memory), feedback store, the remaining analyzers and collectors
+  (`apt_log`, `snap_changes`, `hardware`, `cache_state`, `diskspace`,
+  and analyzers `held_packages`, `firmware_mismatch`, `oom_attribution`,
+  `snap_refresh_breakage`, `irq_driver_regression`, `cache_health`).
   See [docs/plan.md](docs/plan.md) for the full backlog.
 
 **Window semantics:** `--since` filters historical events (package

@@ -17,9 +17,12 @@ import re
 import sys
 from datetime import datetime, timedelta, timezone
 
+from ubuntu_doctor.analyzers.apparmor_denials import ANALYZER as AAD
 from ubuntu_doctor.analyzers.postupgrade_regression import ANALYZER as PUR
 from ubuntu_doctor.analyzers.systemd_health import ANALYZER as SYSH
+from ubuntu_doctor.collectors.dmesg import COLLECTOR as DMSG
 from ubuntu_doctor.collectors.dpkg_history import COLLECTOR as DPKG
+from ubuntu_doctor.collectors.journald import COLLECTOR as JRND
 from ubuntu_doctor.collectors.systemd_failed import COLLECTOR as SYSD
 from ubuntu_doctor.llm import LLMClient, LLMExplanation, LLMUnavailable
 from ubuntu_doctor.llm.client import (
@@ -31,8 +34,8 @@ from ubuntu_doctor.orchestrator import build_snapshot, run_analyzers
 from ubuntu_doctor.ranker import rank as rank_by_symptom
 from ubuntu_doctor.ui import jsonout, text
 
-COLLECTORS = (DPKG, SYSD)
-ANALYZERS = (PUR, SYSH)
+COLLECTORS = (DPKG, SYSD, DMSG, JRND)
+ANALYZERS = (PUR, SYSH, AAD)
 
 _SINCE_PATTERN = re.compile(r"^(\d+)([smhdw])$")
 _SINCE_UNITS = {

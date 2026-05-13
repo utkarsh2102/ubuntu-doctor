@@ -15,6 +15,7 @@ PROMPT_VERSION = "1"
 
 MAX_HYPOTHESES_IN_PROMPT = 8
 MAX_RECENT_EVENTS = 25
+MAX_EVIDENCE_PER_HYPOTHESIS = 10
 
 SYSTEM_PROMPT = """\
 You are ubuntu-doctor, a diagnostic assistant for Ubuntu Linux. You receive
@@ -96,8 +97,11 @@ def _summarise_for_llm(
                         "summary": e.summary,
                         "details": e.details,
                     }
-                    for e in h.evidence
+                    for e in h.evidence[:MAX_EVIDENCE_PER_HYPOTHESIS]
                 ],
+                "evidence_truncated": (
+                    max(0, len(h.evidence) - MAX_EVIDENCE_PER_HYPOTHESIS)
+                ),
                 "suggested_commands": list(h.commands),
                 "risks": list(h.risks),
             }
