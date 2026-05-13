@@ -19,7 +19,7 @@ dev = [
 ]
 
 [project.scripts]
-doctor = "ubuntu_doctor.cli:main"
+ubuntu-doctor = "ubuntu_doctor.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ubuntu_doctor"]

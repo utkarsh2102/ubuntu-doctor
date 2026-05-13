@@ -1,4 +1,4 @@
-"""Interactive `doctor feedback` flow.
+"""Interactive `ubuntu-doctor feedback` flow.
 
 Reads the last-run cache, presents the diagnoses the user just saw,
 prompts them for which hypothesis (if any) was the cause, what they
@@ -97,7 +97,7 @@ def record_feedback(
         _print(
             err,
             f"No previous diagnosis found at {cache.path}.",
-            "Run `doctor` first, then `doctor feedback`.",
+            "Run `ubuntu-doctor` first, then `ubuntu-doctor feedback`.",
         )
         return 1, None
 

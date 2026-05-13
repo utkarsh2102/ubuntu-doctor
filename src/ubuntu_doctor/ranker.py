@@ -1,6 +1,6 @@
 """Deterministic re-ranker for hypotheses, biased by a user-reported symptom.
 
-For `doctor why <symptom>`, the LLM normally does the re-ranking. This
+For `ubuntu-doctor why <symptom>`, the LLM normally does the re-ranking. This
 module gives `--no-ai` runs (and the pre-LLM stage of normal runs) a way
 to surface hypotheses related to the symptom even before the LLM weighs
 in. The boost is modest (capped at +0.25) so confidences remain

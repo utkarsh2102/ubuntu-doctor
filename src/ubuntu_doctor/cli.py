@@ -1,9 +1,9 @@
 """Command-line entry point.
 
 Subcommands:
-  * `doctor`               — passive diagnosis (default).
-  * `doctor why <symptom>` — active diagnosis biased toward the symptom.
-  * `doctor feedback`      — record outcome of the most recent diagnosis.
+  * `ubuntu-doctor`               — passive diagnosis (default).
+  * `ubuntu-doctor why <symptom>` — active diagnosis biased toward the symptom.
+  * `ubuntu-doctor feedback`      — record outcome of the most recent diagnosis.
 
 Both diagnosis modes share collectors and analyzers; they differ in the
 optional symptom passed to the ranker and the LLM. `--no-ai` skips the
@@ -201,7 +201,7 @@ def _add_common_options(parser: argparse.ArgumentParser) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="doctor",
+        prog="ubuntu-doctor",
         description="Diagnose Ubuntu system problems with a local LLM.",
     )
     _add_common_options(parser)
@@ -212,7 +212,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Active diagnosis: explain why a specific symptom is happening.",
         description=(
             "Active diagnosis. Pass a symptom phrase (e.g. "
-            "'doctor why audio stopped working'); ubuntu-doctor will "
+            "'ubuntu-doctor why audio stopped working'); ubuntu-doctor will "
             "bias the ranking and the LLM prompt toward that symptom."
         ),
     )

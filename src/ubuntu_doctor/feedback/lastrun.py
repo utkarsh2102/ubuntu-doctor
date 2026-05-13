@@ -1,11 +1,11 @@
-"""Tiny JSON cache of the most recent `doctor` run.
+"""Tiny JSON cache of the most recent `ubuntu-doctor` run.
 
-Why this exists: `doctor feedback` needs to know which diagnosis the
+Why this exists: `ubuntu-doctor feedback` needs to know which diagnosis the
 user is about to give feedback on. Re-running the full collector +
 analyzer + LLM pipeline just to surface the same hypothesis ids would
-double the inference cost. Instead, every `doctor` run writes its top
+double the inference cost. Instead, every `ubuntu-doctor` run writes its top
 hypotheses + symptom + fingerprint to a single JSON file, and
-`doctor feedback` reads it.
+`ubuntu-doctor feedback` reads it.
 
 The cache is a single file, atomically replaced. It deliberately stores
 *only* what feedback needs (hypothesis ids + titles + suggested fix
@@ -51,8 +51,8 @@ class LastRunCache:
     def write(self, run: LastRun) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         payload = asdict(run)
-        # Atomic write so a crashed `doctor` doesn't leave a half-baked
-        # cache that breaks the next `doctor feedback`.
+        # Atomic write so a crashed `ubuntu-doctor` doesn't leave a half-baked
+        # cache that breaks the next `ubuntu-doctor feedback`.
         fd, tmp_path = tempfile.mkstemp(
             prefix=".last_run.", dir=self._path.parent
         )

@@ -15,7 +15,7 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-UNIT=doctor-demo-fail.service
+UNIT=ubuntu-doctor-demo-fail.service
 
 cat > "/etc/systemd/system/${UNIT}" <<'EOF'
 [Unit]
@@ -52,5 +52,5 @@ echo "  ok  planted /var/cache/apt/archives/partial/ubuntu-doctor-demo.deb.parti
 
 echo ""
 echo "seed complete."
-echo "  next:  doctor"
+echo "  next:  ubuntu-doctor"
 echo "  undo:  sudo ./demo/teardown.sh"

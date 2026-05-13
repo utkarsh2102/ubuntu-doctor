@@ -46,13 +46,13 @@ CLI → Orchestrator → Collectors (parallel, async)
 - **Never require root for basic operation.** Collectors that can't read
   a source emit a `DegradationReport` carrying the exact sudo command
   that would unlock it. The summary surfaces these — no silent omission.
-- **One LLM call per `doctor` run by default.** `--deep` allows
+- **One LLM call per `ubuntu-doctor` run by default.** `--deep` allows
   follow-up calls. Multi-agent fan-out per plugin is explicitly not the
   design — local inference serialises requests, so N agents = N × latency
   with no accuracy gain.
 - **Rules first, LLM second.** A deterministic correlator produces the
   candidate set. The LLM ranks/explains; it does not invent hypotheses.
-  `doctor --no-ai` must remain useful on its own.
+  `ubuntu-doctor --no-ai` must remain useful on its own.
 - **No generic man-page / `/usr/share/doc` RAG.** Retrieval is
   event-driven: changelogs, NEWS, AppArmor profile diffs, apport reports,
   kernel taint, local incident memory. Scoped to the incident window.
@@ -80,9 +80,9 @@ src/ubuntu_doctor/
 pip install -e '.[dev]'
 
 # run the CLI (currently --no-ai only)
-doctor --no-ai
-doctor --no-ai --json
-doctor --no-ai --since 7d
+ubuntu-doctor --no-ai
+ubuntu-doctor --no-ai --json
+ubuntu-doctor --no-ai --since 7d
 
 # run tests
 pytest -q
@@ -106,7 +106,7 @@ pytest -q
     `aa-complain`/`aa-disable`/`rm -rf /`/`dd of=/dev/...` etc. from
     model-proposed fix_commands and surfaces the strip as a risk
   - Symptom-keyword [ranker.py](src/ubuntu_doctor/ranker.py) that
-    re-ranks deterministic hypotheses for `doctor why <symptom>`
+    re-ranks deterministic hypotheses for `ubuntu-doctor why <symptom>`
   - [RAG layer](src/ubuntu_doctor/rag/) that retrieves changelog
     entries between two versions, NEWS files, AppArmor profile bodies
     from `/etc/apparmor.d` and `/var/lib/snapd/apparmor/profiles`, and
@@ -118,10 +118,10 @@ pytest -q
     kinds, subjects); similarity is Jaccard, not vector — no extra
     dependency. Past incidents above 0.2 similarity are injected into
     the LLM prompt as few-shot context. `~/.cache/ubuntu-doctor/last_run.json`
-    cache carries the most recent diagnosis so `doctor feedback` knows
+    cache carries the most recent diagnosis so `ubuntu-doctor feedback` knows
     what to talk about.
-  - CLI: `doctor` (passive), `doctor why <symptom>` (active), and
-    `doctor feedback` (interactive incident recorder). All accept
+  - CLI: `ubuntu-doctor` (passive), `ubuntu-doctor why <symptom>` (active), and
+    `ubuntu-doctor feedback` (interactive incident recorder). All accept
     `--no-ai`, `--json`, `--since`, `--model`, `--base-url`,
     `--llm-timeout`; diagnose modes additionally accept `--no-rag` and
     `--no-history` for opt-out of the new subsystems.

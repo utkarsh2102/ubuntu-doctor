@@ -2,14 +2,14 @@
 
 A repeatable, ~3-4 minute asciinema demo for an engineering audience. The
 seed script plants three safe, reversible faults on your laptop. You record
-`doctor` finding them and the local LLM explaining them. The teardown
+`ubuntu-doctor` finding them and the local LLM explaining them. The teardown
 script undoes everything.
 
 ## What gets seeded
 
 | Fault | Analyzer it triggers |
 |---|---|
-| Failing oneshot systemd unit (`doctor-demo-fail.service`) | `systemd_health` |
+| Failing oneshot systemd unit (`ubuntu-doctor-demo-fail.service`) | `systemd_health` |
 | One held package (the first of `cowsay`, `sl`, `htop`, `tree`, `neofetch`, `fortune` that's installed) | `held_packages` |
 | A zero-byte file in `/var/cache/apt/archives/partial/` | `cache_health` |
 
@@ -27,13 +27,13 @@ curl -fsS http://localhost:8336/v1/models | head -c 200
 
 # editable install ready?
 source .venv/bin/activate
-doctor --help | head -3
+ubuntu-doctor --help | head -3
 
 # asciinema installed?
 sudo apt install asciinema   # or: sudo snap install asciinema
 ```
 
-If the Inference Snap isn't reachable, `doctor` will fall back to
+If the Inference Snap isn't reachable, `ubuntu-doctor` will fall back to
 `--no-ai` automatically — but for this demo you want the LLM, so make
 sure `sudo snap install gemma4` has finished and the endpoint responds.
 
@@ -46,7 +46,7 @@ sudo ./demo/seed.sh
 Verify the faults landed:
 
 ```bash
-systemctl --failed | grep doctor-demo-fail
+systemctl --failed | grep ubuntu-doctor-demo-fail
 apt-mark showhold
 ls /var/cache/apt/archives/partial/
 ```
@@ -54,7 +54,7 @@ ls /var/cache/apt/archives/partial/
 ## Record
 
 ```bash
-asciinema rec doctor-demo.cast \
+asciinema rec ubuntu-doctor-demo.cast \
   --idle-time-limit 2 \
   --title "ubuntu-doctor — local diagnosis for Ubuntu"
 ```
@@ -72,7 +72,7 @@ When the recording is open, run the scenes below. Hit `^D` (or
 > obviously related. Watch."
 
 ```bash
-doctor
+ubuntu-doctor
 ```
 
 What to point at while it runs:
@@ -89,7 +89,7 @@ What to point at while it runs:
 > "Now the same data, but I'm asking a specific question."
 
 ```bash
-doctor why "package upgrades aren't going through"
+ubuntu-doctor why "package upgrades aren't going through"
 ```
 
 The symptom boosts hypotheses mentioning `apt`, `dpkg`, `held` —
@@ -102,7 +102,7 @@ in the ranking. Engineers see the rule-based ranker doing real work
 > "It's a Unix tool. JSON out, pipe wherever."
 
 ```bash
-doctor --no-ai --json | jq '.hypotheses[] | {id, analyzer, confidence, title}'
+ubuntu-doctor --no-ai --json | jq '.hypotheses[] | {id, analyzer, confidence, title}'
 ```
 
 Skipping the LLM here keeps the output deterministic for the
@@ -110,10 +110,10 @@ recording. Shows the deterministic backbone is useful on its own.
 
 ### Scene 4 — closing the loop (~30s)
 
-> "When you actually fix it, doctor learns."
+> "When you actually fix it, ubuntu-doctor learns."
 
 ```bash
-doctor feedback
+ubuntu-doctor feedback
 ```
 
 Walk through the first prompt (which hypothesis was it?), then `^C`
@@ -127,16 +127,16 @@ End the recording (`^D`).
 
 ```bash
 # Play it back locally
-asciinema play doctor-demo.cast
+asciinema play ubuntu-doctor-demo.cast
 
 # Speed up if it feels slow
-asciinema play doctor-demo.cast --speed 1.5
+asciinema play ubuntu-doctor-demo.cast --speed 1.5
 
 # Upload (asciinema.org, public link)
-asciinema upload doctor-demo.cast
+asciinema upload ubuntu-doctor-demo.cast
 
 # Convert to GIF for slides (needs agg from charmbracelet/agg)
-agg doctor-demo.cast doctor-demo.gif --speed 1.4
+agg ubuntu-doctor-demo.cast ubuntu-doctor-demo.gif --speed 1.4
 ```
 
 ## Teardown
@@ -156,7 +156,7 @@ file. Idempotent — safe to run twice.
   Ubuntu-specific evidence (dpkg/apt, snap, AppArmor, journald) is the
   whole point. A RHEL/Arch port would be a different tool.
 - **"Why rules-first if you have an LLM?"** The LLM doesn't invent
-  hypotheses, only ranks and explains them. `doctor --no-ai` must stay
+  hypotheses, only ranks and explains them. `ubuntu-doctor --no-ai` must stay
   useful — that's the regression bedrock for the deterministic layer.
 - **"What about agentic fan-out per analyzer?"** Local inference is
   serialised; N agents = N × latency with no accuracy gain. One call

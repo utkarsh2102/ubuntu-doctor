@@ -8,7 +8,7 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-UNIT=doctor-demo-fail.service
+UNIT=ubuntu-doctor-demo-fail.service
 
 systemctl reset-failed "${UNIT}" 2>/dev/null || true
 systemctl disable "${UNIT}" 2>/dev/null || true

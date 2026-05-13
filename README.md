@@ -49,26 +49,26 @@ AppArmor policy change, snap refresh).
 ### Real situations this would have helped
 
 **Post-upgrade audio silence** — `apt upgrade`, reboot, no sound. Cause:
-nvidia held back, destabilising PulseAudio. `doctor` sees: kernel upgraded,
+nvidia held back, destabilising PulseAudio. `ubuntu-doctor` sees: kernel upgraded,
 nvidia held, pulseaudio crashed repeatedly. Connects them.
 
 **Mystery network drop on a cloud VM** — `unattended-upgrade` runs,
 intermittent packet drops follow. `irqbalance` was upgraded and changed IRQ
-affinity for the NIC. `doctor` sees: `irqbalance` upgraded, NIC errors in
+affinity for the NIC. `ubuntu-doctor` sees: `irqbalance` upgraded, NIC errors in
 dmesg at the same time. Surfaces the correlation.
 
 **Snap app silently stopped working** — Spotify snap stopped launching. An
 AppArmor policy update now denies `~/.config/pulse`. No error, no
-notification. `doctor` sees: AppArmor denial for `snap.spotify.*`,
+notification. `ubuntu-doctor` sees: AppArmor denial for `snap.spotify.*`,
 correlated with a snapd refresh. Suggests the right `snap connect` command.
 
 **2am OOM crisis** — production server throws OOM errors, services restart
-randomly. `doctor` groups OOM kills by killed process, ranks repeat
+randomly. `ubuntu-doctor` groups OOM kills by killed process, ranks repeat
 offenders, correlates with recent installs.
 
 **New laptop Wi-Fi regression** — Wi-Fi works, then stops after first
 `apt upgrade`. `linux-firmware` was upgraded; new firmware for a specific
-Realtek card has a regression. `doctor` sees: firmware upgraded, Wi-Fi dmesg
+Realtek card has a regression. `ubuntu-doctor` sees: firmware upgraded, Wi-Fi dmesg
 errors at next boot, exact PCI/USB IDs of the affected card.
 
 ---
@@ -85,17 +85,17 @@ python3 -m venv .venv
 .venv/bin/pip install -e '.[dev]'
 ```
 
-The editable install registers a `doctor` console script inside the venv.
+The editable install registers a `ubuntu-doctor` console script inside the venv.
 Activate the venv or prefix with `.venv/bin/`:
 
 ```bash
 source .venv/bin/activate
-doctor --help
+ubuntu-doctor --help
 ```
 
 ### LLM (Ubuntu Inference Snap)
 
-By default `doctor` calls a **local** LLM at `http://localhost:8336/v1` —
+By default `ubuntu-doctor` calls a **local** LLM at `http://localhost:8336/v1` —
 served by a [Canonical Inference Snap](https://documentation.ubuntu.com/inference-snaps/reference/snaps/).
 
 The default snap is `gemma4`, which exposes the `gemma:e4b` model over an
@@ -106,7 +106,7 @@ sudo snap install gemma4
 # the snap starts an OpenAI-compatible endpoint at localhost:8336
 ```
 
-If no Inference Snap is installed, `doctor` falls back to deterministic-only
+If no Inference Snap is installed, `ubuntu-doctor` falls back to deterministic-only
 mode and tells you what it couldn't do. You can also point at any other
 OpenAI-compatible endpoint via `--base-url` and pick a different model with
 `--model`.
@@ -116,29 +116,29 @@ OpenAI-compatible endpoint via `--base-url` and pick a different model with
 ## Usage
 
 ```
-doctor                        # passive: what is wrong right now?
-doctor why <symptom>          # active: why did my audio stop working?
-doctor feedback               # record outcome of the most recent diagnosis
+ubuntu-doctor                        # passive: what is wrong right now?
+ubuntu-doctor why <symptom>          # active: why did my audio stop working?
+ubuntu-doctor feedback               # record outcome of the most recent diagnosis
 
 # scope
-doctor --since 7d             # window for historical events (default: 14d)
+ubuntu-doctor --since 7d             # window for historical events (default: 14d)
 
 # turning things off
-doctor --no-ai                # skip the LLM call
-doctor --no-rag               # skip changelog / profile / apport retrieval
-doctor --no-history           # don't read or write the local feedback store
+ubuntu-doctor --no-ai                # skip the LLM call
+ubuntu-doctor --no-rag               # skip changelog / profile / apport retrieval
+ubuntu-doctor --no-history           # don't read or write the local feedback store
 
 # selecting analyzers
-doctor --analyzers postupgrade_regression,apparmor_denials
-doctor --skip-analyzers cache_health,oom_attribution
+ubuntu-doctor --analyzers postupgrade_regression,apparmor_denials
+ubuntu-doctor --skip-analyzers cache_health,oom_attribution
 
 # LLM endpoint
-doctor --model gemma:e4b
-doctor --base-url http://localhost:8336/v1
-doctor --llm-timeout 120
+ubuntu-doctor --model gemma:e4b
+ubuntu-doctor --base-url http://localhost:8336/v1
+ubuntu-doctor --llm-timeout 120
 
 # output
-doctor --json                 # machine-readable JSON
+ubuntu-doctor --json                 # machine-readable JSON
 ```
 
 ### Time window
@@ -149,15 +149,15 @@ unit is currently failed right now", "held packages", "/boot is 92% full" —
 are reported regardless of when they last changed.
 
 ```bash
-doctor --since 2d
-doctor --since 6h
-doctor --since 30m
+ubuntu-doctor --since 2d
+ubuntu-doctor --since 6h
+ubuntu-doctor --since 30m
 ```
 
 ### Passive diagnosis
 
 ```bash
-doctor
+ubuntu-doctor
 ```
 
 Runs all collectors in parallel, builds a timeline, runs all analyzers,
@@ -168,9 +168,9 @@ top correlations.
 ### Active symptom-directed diagnosis
 
 ```bash
-doctor why "audio stopped working after the update"
-doctor why "wifi drops randomly"
-doctor why "snap app won't open"
+ubuntu-doctor why "audio stopped working after the update"
+ubuntu-doctor why "wifi drops randomly"
+ubuntu-doctor why "snap app won't open"
 ```
 
 The symptom phrase is used to re-rank hypotheses before the LLM call,
@@ -187,16 +187,16 @@ after. Available ids: `apparmor_denials`, `cache_health`,
 falls back to "run everything".
 
 ```bash
-doctor --analyzers postupgrade_regression,firmware_mismatch
-doctor --skip-analyzers cache_health
-doctor why "wifi flaky" --analyzers firmware_mismatch,irq_driver_regression
+ubuntu-doctor --analyzers postupgrade_regression,firmware_mismatch
+ubuntu-doctor --skip-analyzers cache_health
+ubuntu-doctor why "wifi flaky" --analyzers firmware_mismatch,irq_driver_regression
 ```
 
 ### No-AI mode
 
 ```bash
-doctor --no-ai
-doctor why "audio gone" --no-ai
+ubuntu-doctor --no-ai
+ubuntu-doctor why "audio gone" --no-ai
 ```
 
 Produces the deterministic rule findings without calling the LLM. Useful
@@ -205,8 +205,8 @@ or when you want to see the raw analyzer output before LLM re-ranking.
 
 ### Feedback
 
-After a `doctor` run, the top hypotheses and a fingerprint are written to
-`~/.cache/ubuntu-doctor/last_run.json`. Running `doctor feedback` reads
+After a `ubuntu-doctor` run, the top hypotheses and a fingerprint are written to
+`~/.cache/ubuntu-doctor/last_run.json`. Running `ubuntu-doctor feedback` reads
 that file, prompts you for which hypothesis (if any) was the cause, what
 you ran, what happened, and an outcome flag, and writes an `Incident` row
 to `~/.local/share/ubuntu-doctor/incidents.db`. Future runs retrieve
@@ -226,7 +226,7 @@ CLI → Orchestrator → Collectors (parallel, async)
                              ↓
        Analyzers (parallel, rule-based) → [Hypothesis, ...]
                              ↓
-        Ranker (symptom keyword boost for `doctor why`)
+        Ranker (symptom keyword boost for `ubuntu-doctor why`)
                              ↓
      RAG retrieval (changelogs, AppArmor profiles, apport)
     + similar past incidents from the local feedback store
@@ -276,7 +276,7 @@ commands (never executed), read-only investigation steps, and risks.
 
 ### LLM call
 
-`doctor` makes **one structured JSON call** per run. The prompt contains
+`ubuntu-doctor` makes **one structured JSON call** per run. The prompt contains
 the deterministic hypotheses, evidence timeline, retrieved RAG snippets,
 similar past incidents from the feedback store, and the optional symptom.
 The model returns a plain-English summary, re-ranked hypotheses with
@@ -313,20 +313,20 @@ LLM alongside the hypotheses. Disable retrieval with `--no-rag`.
 
 ### Local incident memory
 
-`doctor feedback` writes one `Incident` per recorded outcome to
+`ubuntu-doctor feedback` writes one `Incident` per recorded outcome to
 `~/.local/share/ubuntu-doctor/incidents.db` (SQLite, WAL mode). Each row
 stores the fingerprint, chosen hypothesis ids, suggested vs. applied
 commands, observed effect, outcome (`fixed` / `partially-fixed` /
 `not-fixed` / `made-it-worse` / `unknown`), and free-text notes.
 
-On the next `doctor` run, the orchestrator computes a fingerprint over
+On the next `ubuntu-doctor` run, the orchestrator computes a fingerprint over
 the current top hypotheses, finds similar past incidents by Jaccard
 similarity, and includes them in the LLM prompt as few-shot examples.
 Disable with `--no-history`.
 
 ### Privilege and degradation
 
-`doctor` runs without root by default. Collectors that need elevated
+`ubuntu-doctor` runs without root by default. Collectors that need elevated
 access emit a `DegradationReport` with the exact `sudo` command that
 would unlock more data — nothing is silently omitted. A "What I couldn't
 see" section in the output lists every degradation with its unlock
@@ -367,10 +367,10 @@ pipeline, not an interactive user.
 pip install -e '.[dev]'
 
 # run the CLI
-doctor --no-ai
-doctor --no-ai --json
-doctor --no-ai --since 7d
-doctor why "audio gone" --no-ai
+ubuntu-doctor --no-ai
+ubuntu-doctor --no-ai --json
+ubuntu-doctor --no-ai --since 7d
+ubuntu-doctor why "audio gone" --no-ai
 
 # run tests
 pytest -q
@@ -405,7 +405,7 @@ added without touching any existing code — see `collectors/base.py` and
 
 **Rules first, LLM explains.** A deterministic correlator produces the
 candidate set. The LLM re-ranks and explains in plain English; it does
-not invent hypotheses. `doctor --no-ai` must remain useful on its own.
+not invent hypotheses. `ubuntu-doctor --no-ai` must remain useful on its own.
 
 **One LLM call per run.** The local Inference Snap serialises requests;
 N agents = N × latency with no accuracy gain. Per-analyzer fan-out is
@@ -440,19 +440,19 @@ Implemented:
 - Event-scoped RAG over changelogs, NEWS files, AppArmor profiles, and
   apport reports
 - Local incident memory (SQLite + Jaccard similarity) with the
-  `doctor feedback` flow and a last-run cache
+  `ubuntu-doctor feedback` flow and a last-run cache
 - LLM client against the Canonical Inference Snap with lenient JSON
   parsing and graceful degradation
-- Symptom-keyword ranker for `doctor why <symptom>`
-- CLI: `doctor`, `doctor why <symptom>`, `doctor feedback`, with
+- Symptom-keyword ranker for `ubuntu-doctor why <symptom>`
+- CLI: `ubuntu-doctor`, `ubuntu-doctor why <symptom>`, `ubuntu-doctor feedback`, with
   `--no-ai`, `--no-rag`, `--no-history`, `--analyzers`,
   `--skip-analyzers`, `--json`, `--since`, `--model`, `--base-url`,
   `--llm-timeout`
 
 Not yet implemented:
-- `doctor explain <hypothesis-id>` subcommand
+- `ubuntu-doctor explain <hypothesis-id>` subcommand
 - `--deep` mode for per-analyzer follow-up LLM calls
-- `doctor feedback --revisit` for re-asking about unresolved cases
+- `ubuntu-doctor feedback --revisit` for re-asking about unresolved cases
 - Embedding-based similarity in the feedback store (current is Jaccard)
 
 See [docs/plan.md](docs/plan.md) for the full design and backlog.

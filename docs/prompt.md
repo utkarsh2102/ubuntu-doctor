@@ -19,8 +19,8 @@ plain-English diagnosis with a concrete suggested fix.
 
 It has two modes:
 
-- `doctor` — passive diagnosis. "What is wrong with my system right now?"
-- `doctor why <symptom>` — active diagnosis. "Why did my audio stop working?"
+- `ubuntu-doctor` — passive diagnosis. "What is wrong with my system right now?"
+- `ubuntu-doctor why <symptom>` — active diagnosis. "Why did my audio stop working?"
 
 The AI part is not decorative. The correlation between heterogeneous log sources is
 genuinely hard to do with static rules. The LLM earns its place here.
@@ -39,7 +39,7 @@ genuinely hard to do with static rules. The LLM earns its place here.
    access; the tool degrades gracefully without it.
 3. **Fast by default.** The default run should finish in under 3 seconds before the
    API call. No collector should block the others.
-4. **Composable.** `doctor --json` outputs machine-readable data. Other tools can
+4. **Composable.** `ubuntu-doctor --json` outputs machine-readable data. Other tools can
    consume it.
 5. **Honest about uncertainty.** If the AI isn't confident, it says so. No
    hallucinated fixes.
@@ -66,7 +66,7 @@ enumeration — is not visible anywhere obvious. The top-voted answer involves t
 different commands across two Stack Overflow threads and still doesn't explain *why*
 it happened.
 
-`doctor` sees: kernel upgraded, nvidia held, pulseaudio crashed repeatedly. Connects
+`ubuntu-doctor` sees: kernel upgraded, nvidia held, pulseaudio crashed repeatedly. Connects
 them. Says what to do.
 
 ---
@@ -78,7 +78,7 @@ routine `unattended-upgrade` run. The cause: `irqbalance` was upgraded and its
 config changed the IRQ affinity for the NIC. Nothing in the standard logs makes
 this obvious. `dmesg` shows errors but not the cause.
 
-`doctor` sees: `irqbalance` upgraded, network IRQ errors in dmesg starting at the
+`ubuntu-doctor` sees: `irqbalance` upgraded, network IRQ errors in dmesg starting at the
 same time. Surfaces the correlation. Points to the config diff.
 
 ---
@@ -90,7 +90,7 @@ an AppArmor policy update that now denies access to `~/.config/pulse`. The app
 produces no visible error. There's no notification. The user just double-clicks and
 nothing happens.
 
-`doctor` sees: AppArmor denial for the Spotify snap, timestamp correlates with
+`ubuntu-doctor` sees: AppArmor denial for the Spotify snap, timestamp correlates with
 snapd refresh. Explains the denial in plain English. Suggests the right `snap
 connect` command.
 
@@ -101,7 +101,7 @@ connect` command.
 A production Ubuntu server starts throwing OOM errors. Services are restarting
 randomly. The sysadmin is tired and needs to know where to look first.
 
-`doctor --deep` gathers memory pressure events from `dmesg`, correlates with which
+`ubuntu-doctor --deep` gathers memory pressure events from `dmesg`, correlates with which
 services were restarting, checks if any recent package installs changed memory
 footprint, and ranks the candidates by likelihood.
 
@@ -113,7 +113,7 @@ A user installs Ubuntu on a new laptop and Wi-Fi works. After the first
 `apt upgrade`, it stops. The reason: the linux-firmware package was upgraded and
 the new firmware for their specific Realtek card has a regression.
 
-`doctor` sees: linux-firmware upgraded, Wi-Fi errors in dmesg starting at next
+`ubuntu-doctor` sees: linux-firmware upgraded, Wi-Fi errors in dmesg starting at next
 boot, hardware ID of the card. Explains what happened and links to the relevant
 Ubuntu bug.
 

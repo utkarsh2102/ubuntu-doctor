@@ -20,7 +20,7 @@ anything, never writes files, never invokes package managers.
 
 This plan reflects four decisions confirmed with the user:
 - **Rules-first, LLM-explains.** A deterministic correlator produces ranked
-  hypotheses; the LLM re-ranks and explains. `doctor --no-ai` still works.
+  hypotheses; the LLM re-ranks and explains. `ubuntu-doctor --no-ai` still works.
 - **Plugins are code modules, one LLM call by default**; `--deep` allows
   per-analyzer follow-up LLM calls for the rare ambiguous case.
 - **Local incident memory** (SQLite + vector index), RAG'd on similar inputs.
@@ -38,7 +38,7 @@ This plan reflects four decisions confirmed with the user:
   env var, config file) so swaps are cheap.
 - **Multi-agent (one LLM agent per plugin) is the wrong shape.** Local
   inference is serialised; N agents = N × latency, no accuracy gain. One
-  call per `doctor` run with all collector output structured into the prompt
+  call per `ubuntu-doctor` run with all collector output structured into the prompt
   is faster and more reproducible. `--deep` is the escape hatch.
 - **RAG over `man` and `/usr/share/doc` is mostly noise.** Useful sources are
   scoped to packages/events in the incident window: changelogs, NEWS,
@@ -55,7 +55,7 @@ This plan reflects four decisions confirmed with the user:
   call dominates. Ubuntu ships Python in base. Use `python3-apt` and
   `systemd.journal` Python bindings where available.
 - **Concurrency:** `asyncio` + `asyncio.subprocess` for the collector
-  fan-out. Hard 3s wall-clock budget per `doctor` run for collection.
+  fan-out. Hard 3s wall-clock budget per `ubuntu-doctor` run for collection.
 - **Distribution:** pip package first; a confined `snap` later for users
   who want sandboxing. Avoid premature snap packaging — confinement makes
   reading host data harder, which is the entire point of the tool.
@@ -68,7 +68,7 @@ ubuntu-doctor/
 ├── README.md
 ├── src/ubuntu_doctor/
 │   ├── __main__.py
-│   ├── cli.py                       # argparse, subcommands: doctor / why / explain
+│   ├── cli.py                       # argparse, subcommands: ubuntu-doctor / why / explain
 │   ├── orchestrator.py              # collectors → analyzers → LLM
 │   ├── snapshot.py                  # TimelineEvent, Snapshot, Hypothesis dataclasses
 │   ├── cache/
@@ -111,7 +111,7 @@ ubuntu-doctor/
     ├── fixtures/                    # captured snapshots from real incidents
     ├── collectors/
     ├── analyzers/
-    └── e2e/                         # `doctor --no-ai` against fixture snapshots
+    └── e2e/                         # `ubuntu-doctor --no-ai` against fixture snapshots
 ```
 
 Each plugin folder contains a `plugin.py` with the entry-point class, a
@@ -121,8 +121,8 @@ points so third parties can ship their own.
 
 ## Data flow
 
-1. **CLI** parses subcommand (`doctor`, `doctor why <symptom>`,
-   `doctor explain <event-id>`, `doctor feedback`).
+1. **CLI** parses subcommand (`ubuntu-doctor`, `ubuntu-doctor why <symptom>`,
+   `ubuntu-doctor explain <event-id>`, `ubuntu-doctor feedback`).
 2. **Orchestrator** loads collectors in parallel under a 3s budget. Each
    collector returns a partial `Snapshot` slice plus a `DegradationReport`.
 3. **Orchestrator** merges slices into one `Snapshot` (a typed,
@@ -289,7 +289,7 @@ The interactive prompt collects, optionally and editable in `$EDITOR`:
   "audio came back after reboot", "still no Wi-Fi", "different error
   now: …". This is the highest-signal field for future RAG.
 - **Outcome flag.** `fixed` / `partially-fixed` / `not-fixed` / `made-it-worse`
-  / `unknown`. Checkable later via `doctor feedback --revisit`.
+  / `unknown`. Checkable later via `ubuntu-doctor feedback --revisit`.
 - **Free notes.** Anything else — context the user thinks matters,
   links to bug reports, "I also rolled back package X".
 
@@ -310,18 +310,18 @@ separate, opt-in feature with its own privacy review.
 ## CLI surface (v1)
 
 ```
-doctor                        # passive diagnosis, last 14 days
-doctor why <symptom>          # active, e.g. "audio gone", "wifi flaky"
-doctor explain <hypothesis-id># expand evidence + commands for one hypothesis
-doctor feedback               # record outcome of a past diagnosis
-doctor feedback --revisit     # ask "did the fix work?" for unresolved cases
-doctor --json                 # machine-readable
-doctor --no-ai                # deterministic only, skip LLM
-doctor --deep                 # allow per-analyzer follow-up LLM calls
-doctor --since <when>         # override default window
-doctor --model <name>         # override default gemma:e4b
-doctor --base-url <url>       # override OpenAI-compatible endpoint
-doctor doctor                 # report ubuntu-doctor's own health (collectors,
+ubuntu-doctor                        # passive diagnosis, last 14 days
+ubuntu-doctor why <symptom>          # active, e.g. "audio gone", "wifi flaky"
+ubuntu-doctor explain <hypothesis-id># expand evidence + commands for one hypothesis
+ubuntu-doctor feedback               # record outcome of a past diagnosis
+ubuntu-doctor feedback --revisit     # ask "did the fix work?" for unresolved cases
+ubuntu-doctor --json                 # machine-readable
+ubuntu-doctor --no-ai                # deterministic only, skip LLM
+ubuntu-doctor --deep                 # allow per-analyzer follow-up LLM calls
+ubuntu-doctor --since <when>         # override default window
+ubuntu-doctor --model <name>         # override default gemma:e4b
+ubuntu-doctor --base-url <url>       # override OpenAI-compatible endpoint
+ubuntu-doctor ubuntu-doctor                 # report ubuntu-doctor's own health (collectors,
                               # snap reachability, cache size)
 ```
 
@@ -346,13 +346,13 @@ doctor doctor                 # report ubuntu-doctor's own health (collectors,
   hypothesis with `--no-ai`. These are the regression bedrock.
 - **End-to-end smoke test** on a clean Ubuntu LTS VM with deliberately
   broken state (held nvidia, denied snap, missing firmware) — verify
-  `doctor` reports correctly with and without the Inference Snap.
+  `ubuntu-doctor` reports correctly with and without the Inference Snap.
 - **LLM prompt regression**: capture (snapshot → diagnosis) golden
   pairs; CI re-runs them against pinned model+prompt version and flags
   drift. Acceptable diff threshold is loose (LLM nondeterminism) but
   catastrophic failures (wrong hypothesis ranked top, hallucinated
   commands) trip the test.
-- **Manual UX pass**: run `doctor` on the developer's daily-driver
+- **Manual UX pass**: run `ubuntu-doctor` on the developer's daily-driver
   machines; capture and review every diagnosis before v1 ships.
 
 ## v1 scope explicitly
