@@ -94,14 +94,20 @@ def _build_hypothesis(
         f"correlation and name heuristic suggest the upgrade is the "
         f"likely trigger."
     )
-    commands = (
-        f"apt install {upgrade.subject}={old}",
-        f"apt-mark hold {upgrade.subject}",
-        f"systemctl restart {failure.subject}",
+    fix_commands = (
+        f"sudo apt install {upgrade.subject}={old}",
+        f"sudo apt-mark hold {upgrade.subject}",
+        f"sudo systemctl restart {failure.subject}",
+    )
+    investigation_steps = (
+        f"systemctl status {failure.subject}",
+        f"journalctl -u {failure.subject} -b --no-pager",
     )
     risks = (
         "Downgrading may pull in older dependencies; review the "
         "transaction before confirming.",
+        "If the upgrade brought security fixes, holding the old version "
+        "leaves you exposed. Re-evaluate after a real fix lands.",
     )
     return Hypothesis(
         id=_hypothesis_id(upgrade, failure),
@@ -113,7 +119,8 @@ def _build_hypothesis(
         confidence=round(confidence, 3),
         rationale=rationale,
         evidence=(upgrade, failure),
-        commands=commands,
+        fix_commands=fix_commands,
+        investigation_steps=investigation_steps,
         risks=risks,
     )
 

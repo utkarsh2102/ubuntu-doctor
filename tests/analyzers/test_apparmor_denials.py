@@ -72,8 +72,18 @@ async def test_baseline_denial_emits_hypothesis_at_base_confidence():
     assert h.confidence == 0.5
     assert h.analyzer == "apparmor_denials"
     assert "snap.spotify.spotify" in h.title
-    # For snap profiles the suggestions must include `snap connections`.
-    assert any("snap connections spotify" in c for c in h.commands)
+    # The analyzer has no deterministic fix for apparmor denials.
+    assert h.fix_commands == ()
+    # For snap profiles the investigation must include `snap connections`.
+    assert any(
+        "snap connections spotify" in c for c in h.investigation_steps
+    )
+    # Rationale must tell the user a fix isn't proposed and why.
+    assert (
+        "no deterministic fix" in h.rationale.lower()
+        or "tailored" in h.rationale.lower()
+        or "llm" in h.rationale.lower()
+    )
     # Must warn against silencing AppArmor.
     assert any(
         "aa-disable" in r or "aa-complain" in r or "silencing" in r.lower()
@@ -169,9 +179,12 @@ async def test_system_profile_suggests_apparmor_d_inspection():
     snap = _snapshot([_denial(profile="usr.bin.firefox")])
     h = (await ApparmorDenialsAnalyzer().analyze(snap))[0]
     # Non-snap profile: must point at /etc/apparmor.d rather than
-    # `snap connections`.
-    assert any("/etc/apparmor.d" in c for c in h.commands)
-    assert not any("snap connections" in c for c in h.commands)
+    # `snap connections`. Investigation only; no deterministic fix.
+    assert h.fix_commands == ()
+    assert any("/etc/apparmor.d" in c for c in h.investigation_steps)
+    assert not any(
+        "snap connections" in c for c in h.investigation_steps
+    )
 
 
 async def test_hypotheses_sorted_by_confidence():

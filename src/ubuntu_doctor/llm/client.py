@@ -130,15 +130,25 @@ def _build_explanation(
             confidence = float(item.get("confidence", 0.0))
         except (TypeError, ValueError):
             confidence = 0.0
-        commands = tuple(str(c) for c in item.get("commands", []) if c)
-        risks = tuple(str(r) for r in item.get("risks", []) if r)
+        # Prefer the new schema; fall back to legacy `commands` if a
+        # model emits the old field. Either gets treated as fix
+        # commands — the LLM is instructed to produce fixes there.
+        raw_fix = item.get("fix_commands")
+        if raw_fix is None:
+            raw_fix = item.get("commands", [])
+        fix_commands = tuple(str(c) for c in (raw_fix or []) if c)
+        investigation_steps = tuple(
+            str(s) for s in (item.get("investigation_steps") or []) if s
+        )
+        risks = tuple(str(r) for r in (item.get("risks") or []) if r)
         ranked.append(
             RankedHypothesis(
                 hypothesis_id=hid,
                 title=str(item.get("title", "")).strip() or hid,
                 why=str(item.get("why", "")).strip(),
                 confidence=max(0.0, min(1.0, confidence)),
-                commands=commands,
+                fix_commands=fix_commands,
+                investigation_steps=investigation_steps,
                 risks=risks,
             )
         )

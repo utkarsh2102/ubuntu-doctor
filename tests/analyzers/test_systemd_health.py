@@ -49,7 +49,11 @@ async def test_oom_kill_is_high_confidence_with_specific_commands():
     h = hs[0]
     assert "OOM killer" in h.title
     assert h.confidence == 0.7
-    assert any("dmesg" in c and "out of memory" in c for c in h.commands)
+    assert any(
+        "dmesg" in c and "out of memory" in c for c in h.investigation_steps
+    )
+    # OOM-kill has no deterministic fix the analyzer can safely propose.
+    assert h.fix_commands == ()
     # Must warn the user against the lazy "just raise the limit" fix.
     assert any("MemoryMax" in r or "leak" in r.lower() for r in h.risks)
 
@@ -58,14 +62,18 @@ async def test_core_dump_suggests_coredumpctl():
     snap = _snapshot([_failure("buggy.service", result="core-dump")])
     h = (await SystemdHealthAnalyzer().analyze(snap))[0]
     assert "core dump" in h.title.lower()
-    assert any(c.startswith("coredumpctl info") for c in h.commands)
+    assert h.fix_commands == ()
+    assert any(
+        c.startswith("coredumpctl info") for c in h.investigation_steps
+    )
 
 
 async def test_timeout_classification():
     snap = _snapshot([_failure("slow.service", result="timeout")])
     h = (await SystemdHealthAnalyzer().analyze(snap))[0]
     assert "timed out" in h.title.lower()
-    assert any("TimeoutStart" in c for c in h.commands)
+    assert h.fix_commands == ()
+    assert any("TimeoutStart" in c for c in h.investigation_steps)
     # Don't suggest bumping the timeout without investigating first.
     assert any("symptom" in r.lower() or "investigat" in r.lower() for r in h.risks)
 
@@ -74,19 +82,28 @@ async def test_signal_classification():
     snap = _snapshot([_failure("ghost.service", result="signal")])
     h = (await SystemdHealthAnalyzer().analyze(snap))[0]
     assert "signal" in h.title.lower()
-    assert any("watchdog" in c.lower() or "killed" in c.lower() for c in h.commands)
+    assert h.fix_commands == ()
+    assert any(
+        "watchdog" in c.lower() or "killed" in c.lower()
+        for c in h.investigation_steps
+    )
 
 
-async def test_loadstate_overrides_result_type():
+async def test_loadstate_not_found_offers_real_fix():
     # If LoadState is broken, the result type is less informative — the
-    # unit-file issue is the actual problem.
+    # unit-file issue is the actual problem. This branch SHOULD offer a
+    # real fix because the right action is concrete (finish the
+    # interrupted dpkg run, reload units).
     snap = _snapshot(
         [_failure("orphan.service", result="exit-code", load_state="not-found")]
     )
     h = (await SystemdHealthAnalyzer().analyze(snap))[0]
     assert "not-found" in h.title
-    assert any("dpkg --audit" in c for c in h.commands)
-    assert any("LoadError" in c for c in h.commands)
+    assert any("dpkg --configure -a" in c for c in h.fix_commands)
+    assert any("daemon-reload" in c for c in h.fix_commands)
+    # Diagnostic commands still appear as investigation.
+    assert any("dpkg --audit" in c for c in h.investigation_steps)
+    assert any("LoadError" in c for c in h.investigation_steps)
 
 
 async def test_masked_loadstate_is_surfaced():
@@ -95,8 +112,14 @@ async def test_masked_loadstate_is_surfaced():
     )
     h = (await SystemdHealthAnalyzer().analyze(snap))[0]
     assert "masked" in h.title
+    # Masking might be intentional — the analyzer must NOT auto-suggest
+    # un-masking as a fix.
+    assert h.fix_commands == ()
     # Must warn that unmasking may re-enable a deliberately-disabled unit.
-    assert any("intentionally" in r.lower() or "deliberately" in r.lower() for r in h.risks)
+    assert any(
+        "intentionally" in r.lower() or "deliberately" in r.lower()
+        for r in h.risks
+    )
 
 
 async def test_generic_exit_code_is_low_confidence_fallback():
@@ -126,7 +149,8 @@ async def test_network_cluster_fires_with_two_failures():
     assert len(hs) == 3
     cluster = next(h for h in hs if h.analyzer == "systemd_health" and "network units" in h.title)
     assert cluster.confidence > 0.65
-    assert any("ip -brief addr" in c for c in cluster.commands)
+    assert any("ip -brief addr" in c for c in cluster.investigation_steps)
+    assert cluster.fix_commands == ()
     # Cluster ranks above the individual generic-exit-code hypotheses.
     assert hs[0].id == cluster.id
 
@@ -143,7 +167,7 @@ async def test_audio_cluster_uses_user_session_commands():
         for h in await SystemdHealthAnalyzer().analyze(snap)
         if "audio units" in h.title
     )
-    assert any("--user" in c for c in cluster.commands)
+    assert any("--user" in c for c in cluster.investigation_steps)
 
 
 async def test_single_subsystem_unit_does_not_form_a_cluster():

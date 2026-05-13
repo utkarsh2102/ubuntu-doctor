@@ -55,9 +55,16 @@ async def test_kernel_upgrade_then_pulseaudio_failure_correlates():
     assert "linux-firmware" in h.title
     assert "pulseaudio.service" in h.title
     assert h.confidence > 0.5
-    # Suggested rollback should pin the old version.
-    assert any("apt install linux-firmware=20240318-0ubuntu3.7" in c for c in h.commands)
-    assert any("apt-mark hold linux-firmware" in c for c in h.commands)
+    # Suggested rollback should pin the old version. These are real
+    # fixes, so they belong in fix_commands, not investigation_steps.
+    assert any(
+        "apt install linux-firmware=20240318-0ubuntu3.7" in c
+        for c in h.fix_commands
+    )
+    assert any("apt-mark hold linux-firmware" in c for c in h.fix_commands)
+    # The analyzer must not promote read-only inspection commands into
+    # fix_commands.
+    assert not any("journalctl" in c for c in h.fix_commands)
 
 
 async def test_exact_name_match_is_high_confidence():

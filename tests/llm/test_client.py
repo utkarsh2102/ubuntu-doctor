@@ -53,7 +53,8 @@ def _good_json_content(*ids: str) -> str:
                     "title": f"title for {i}",
                     "why": f"because of {i}",
                     "confidence": 0.7,
-                    "commands": ["echo hello"],
+                    "fix_commands": ["apt install foo=1.0"],
+                    "investigation_steps": ["journalctl -u foo"],
                     "risks": ["mind the gap"],
                 }
                 for i in ids
@@ -100,7 +101,8 @@ async def test_explain_happy_path():
     rh = explanation.ranked_hypotheses[0]
     assert rh.hypothesis_id == "h1"
     assert rh.confidence == 0.7
-    assert rh.commands == ("echo hello",)
+    assert rh.fix_commands == ("apt install foo=1.0",)
+    assert rh.investigation_steps == ("journalctl -u foo",)
     assert rh.risks == ("mind the gap",)
     assert explanation.what_i_did_not_check == "the kitchen sink"
     assert explanation.model == "test-model"
@@ -129,7 +131,8 @@ async def test_explain_clamps_confidence_to_unit_interval():
                     "title": "x",
                     "why": "y",
                     "confidence": 2.5,
-                    "commands": [],
+                    "fix_commands": [],
+                    "investigation_steps": [],
                     "risks": [],
                 },
                 {
@@ -137,7 +140,8 @@ async def test_explain_clamps_confidence_to_unit_interval():
                     "title": "x",
                     "why": "y",
                     "confidence": -1,
-                    "commands": [],
+                    "fix_commands": [],
+                    "investigation_steps": [],
                     "risks": [],
                 },
             ],
@@ -152,6 +156,37 @@ async def test_explain_clamps_confidence_to_unit_interval():
     explanation = await client.explain(_snapshot(), [_hyp("h1")])
     confidences = [rh.confidence for rh in explanation.ranked_hypotheses]
     assert all(0.0 <= c <= 1.0 for c in confidences)
+
+
+async def test_explain_legacy_commands_field_maps_to_fix_commands():
+    # Older models may emit the legacy `commands` key. The parser must
+    # treat it as fix_commands so the user still gets actionable output.
+    legacy = json.dumps(
+        {
+            "summary": "",
+            "ranked_hypotheses": [
+                {
+                    "hypothesis_id": "h1",
+                    "title": "x",
+                    "why": "y",
+                    "confidence": 0.5,
+                    "commands": ["apt install foo=1.0"],
+                    "risks": [],
+                }
+            ],
+            "what_i_did_not_check": "",
+        }
+    )
+
+    def fake_post(url, body, timeout):
+        return _envelope(legacy)
+
+    client = LLMClient(post_fn=fake_post)
+    explanation = await client.explain(_snapshot(), [_hyp("h1")])
+    assert len(explanation.ranked_hypotheses) == 1
+    rh = explanation.ranked_hypotheses[0]
+    assert rh.fix_commands == ("apt install foo=1.0",)
+    assert rh.investigation_steps == ()
 
 
 async def test_explain_handles_unreachable_endpoint():

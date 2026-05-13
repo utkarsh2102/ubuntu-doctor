@@ -66,7 +66,33 @@ def _classify(failure: TimelineEvent) -> Hypothesis:
     load_state = (failure.details.get("load_state") or "").strip()
     ts_iso = failure.ts.isoformat()
 
-    if load_state in {"not-found", "bad-setting", "masked"}:
+    if load_state == "masked":
+        return Hypothesis(
+            id=_hypothesis_id("systemd-loadstate", unit, load_state),
+            analyzer="systemd_health",
+            title=f"{unit}: unit is masked",
+            confidence=0.55,
+            rationale=(
+                f"systemd reports LoadState=masked for {unit}. Someone "
+                "(possibly a package postinst) masked the unit so it "
+                "can't start. Decide whether that masking was intentional "
+                "before un-masking."
+            ),
+            evidence=(failure,),
+            fix_commands=(),
+            investigation_steps=(
+                f"systemctl cat {unit}",
+                f"systemctl status {unit}",
+                f"ls -l /etc/systemd/system/{unit} /run/systemd/system/{unit} 2>/dev/null",
+            ),
+            risks=(
+                "Unmasking with `sudo systemctl unmask` re-enables a unit "
+                "the operator may have disabled deliberately. Confirm the "
+                "reason it was masked before reversing it.",
+            ),
+        )
+
+    if load_state in {"not-found", "bad-setting"}:
         return Hypothesis(
             id=_hypothesis_id("systemd-loadstate", unit, load_state),
             analyzer="systemd_health",
@@ -75,20 +101,33 @@ def _classify(failure: TimelineEvent) -> Hypothesis:
             rationale=(
                 f"systemd reports LoadState={load_state} for {unit}. "
                 "This usually means the owning package is partially "
-                "installed, the unit file has a syntax error, or someone "
-                "masked the unit deliberately."
+                "installed or the unit file has a syntax error. Finishing "
+                "the interrupted dpkg run and re-reading unit files is "
+                "the standard fix."
             ),
             evidence=(failure,),
-            commands=(
+            fix_commands=(
+                "sudo dpkg --configure -a",
+                "sudo systemctl daemon-reload",
+            ),
+            investigation_steps=(
                 f"systemctl cat {unit}",
-                "sudo dpkg --audit",
                 f"systemctl show {unit} -p FragmentPath,LoadError",
+                "sudo dpkg --audit",
             ),
             risks=(
-                "If the unit was masked deliberately, unmasking it will "
-                "re-enable a service the operator intentionally disabled.",
+                "`dpkg --configure -a` will finish whatever package "
+                "install was previously interrupted. If you stopped that "
+                "install on purpose, run `dpkg --audit` first to see "
+                "what would resume.",
             ),
         )
+
+    # The remaining branches (`oom-kill`, `core-dump`, `timeout`,
+    # `signal`, generic failures) do not have a deterministic fix that
+    # the analyzer can safely propose without more context. Surface
+    # investigation steps; let the LLM produce a tailored fix when it
+    # has the full denial/log detail.
 
     if result == "oom-kill":
         return Hypothesis(
@@ -98,12 +137,14 @@ def _classify(failure: TimelineEvent) -> Hypothesis:
             confidence=0.7,
             rationale=(
                 f"systemd reports Result=oom-kill for {unit}: the kernel "
-                "killed the service under memory pressure. The root cause "
-                "is either a leak in the service itself or system-wide "
-                "memory exhaustion from another process."
+                "killed the service under memory pressure. The root "
+                "cause is either a leak in the service itself or "
+                "system-wide memory exhaustion from another process. "
+                "The right fix depends on which — investigate first."
             ),
             evidence=(failure,),
-            commands=(
+            fix_commands=(),
+            investigation_steps=(
                 f"journalctl -u {unit} -p err -b --no-pager",
                 "dmesg --ctime | grep -i 'out of memory'",
                 f"systemctl show {unit} -p "
@@ -125,10 +166,12 @@ def _classify(failure: TimelineEvent) -> Hypothesis:
                 f"systemd reports Result=core-dump for {unit}: a fatal "
                 "signal terminated the service and the kernel produced a "
                 "core file. Likely a software bug, memory corruption, or "
-                "a missing/incompatible shared library."
+                "a missing/incompatible shared library. Inspect the core "
+                "dump before deciding on a fix."
             ),
             evidence=(failure,),
-            commands=(
+            fix_commands=(),
+            investigation_steps=(
                 f"coredumpctl info {unit}",
                 f"journalctl -u {unit} -p err -b --no-pager",
                 "ls -lt /var/crash/",
@@ -149,7 +192,8 @@ def _classify(failure: TimelineEvent) -> Hypothesis:
                 "isn't ready, or a bug in the service itself."
             ),
             evidence=(failure,),
-            commands=(
+            fix_commands=(),
+            investigation_steps=(
                 f"systemctl status {unit}",
                 f"journalctl -u {unit} -b --no-pager",
                 f"systemctl show {unit} -p "
@@ -174,7 +218,8 @@ def _classify(failure: TimelineEvent) -> Hypothesis:
                 "into SIGABRT/SIGSEGV without producing a core dump."
             ),
             evidence=(failure,),
-            commands=(
+            fix_commands=(),
+            investigation_steps=(
                 f"journalctl -u {unit} -p err -b --no-pager",
                 "dmesg --ctime | grep -iE 'killed|out of memory|watchdog'",
                 f"systemctl show {unit} -p "
@@ -191,10 +236,12 @@ def _classify(failure: TimelineEvent) -> Hypothesis:
         rationale=(
             f"{unit} is currently failed. systemd's classification is "
             f"`{result or 'unknown'}`. Inspect the unit's own logs to "
-            "determine the cause."
+            "determine the cause; the LLM may suggest a fix from the "
+            "full context."
         ),
         evidence=(failure,),
-        commands=(
+        fix_commands=(),
+        investigation_steps=(
             f"systemctl status {unit}",
             f"journalctl -u {unit} -p err -b --no-pager",
         ),
@@ -207,34 +254,36 @@ def _cluster_hypothesis(
 ) -> Hypothesis:
     unit_names = sorted(f.subject for f in failures)
     confidence = round(min(0.9, 0.65 + 0.05 * len(failures)), 3)
-    commands: tuple[str, ...]
+    investigation_steps: tuple[str, ...]
     if subsystem == "network":
-        commands = (
+        investigation_steps = (
             "ip -brief addr",
             "ip route",
             "systemctl --no-pager status NetworkManager systemd-networkd systemd-resolved 2>/dev/null",
             "journalctl -b -p err -u NetworkManager -u systemd-networkd -u systemd-resolved --no-pager",
         )
     elif subsystem == "audio":
-        commands = (
+        investigation_steps = (
             "systemctl --user status pipewire pipewire-pulse wireplumber 2>/dev/null",
             "journalctl --user -b -p err -u pipewire -u wireplumber --no-pager 2>/dev/null",
             "lsmod | grep -iE 'snd|audio'",
         )
     elif subsystem == "display":
-        commands = (
+        investigation_steps = (
             "systemctl status display-manager",
             "journalctl -b -p err -u gdm -u lightdm -u sddm --no-pager 2>/dev/null",
             "ls -lt /var/log/Xorg.*.log 2>/dev/null",
         )
     elif subsystem == "boot":
-        commands = (
+        investigation_steps = (
             "journalctl -b 0 -p err --no-pager",
             "ls /boot",
             "df -h /boot",
         )
     else:
-        commands = tuple(f"systemctl status {u}" for u in unit_names)
+        investigation_steps = tuple(
+            f"systemctl status {u}" for u in unit_names
+        )
 
     return Hypothesis(
         id=_hypothesis_id("systemd-cluster", subsystem, *unit_names),
@@ -253,7 +302,8 @@ def _cluster_hypothesis(
             "before the individual services."
         ),
         evidence=tuple(failures),
-        commands=commands,
+        fix_commands=(),
+        investigation_steps=investigation_steps,
         risks=(),
     )
 

@@ -63,7 +63,8 @@ def _llm_block(
                 "title": rh.title,
                 "why": rh.why,
                 "confidence": rh.confidence,
-                "commands": list(rh.commands),
+                "fix_commands": list(rh.fix_commands),
+                "investigation_steps": list(rh.investigation_steps),
                 "risks": list(rh.risks),
             }
             for rh in explanation.ranked_hypotheses
@@ -90,6 +91,7 @@ def _hypothesis(h: Hypothesis) -> dict:
         "confidence": h.confidence,
         "rationale": h.rationale,
         "evidence": [_event(e) for e in h.evidence],
-        "commands": list(h.commands),
+        "fix_commands": list(h.fix_commands),
+        "investigation_steps": list(h.investigation_steps),
         "risks": list(h.risks),
     }

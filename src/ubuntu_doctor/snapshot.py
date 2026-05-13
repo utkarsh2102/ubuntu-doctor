@@ -68,9 +68,19 @@ class Snapshot:
 
 @dataclass(frozen=True)
 class Hypothesis:
-    """One analyzer's guess at a cause, with evidence and a suggested fix.
+    """One analyzer's guess at a cause, with evidence and suggested actions.
 
-    Commands are *suggested* text — never executed by ubuntu-doctor.
+    Suggested actions split by intent so the user (and the LLM) never
+    confuse "look at this" with "do this":
+
+      - `fix_commands` — concrete repair commands the analyzer is
+        confident address the root cause. Example: rolling back a bad
+        upgrade, finishing an interrupted dpkg run.
+      - `investigation_steps` — read-only commands to gather more info
+        when the deterministic analyzer can't produce a confident fix.
+        Example: `journalctl -u <unit>`, `aa-status`.
+
+    Both are *suggested* text — never executed by ubuntu-doctor.
     """
 
     id: str
@@ -79,5 +89,6 @@ class Hypothesis:
     confidence: float
     rationale: str = ""
     evidence: tuple[TimelineEvent, ...] = ()
-    commands: tuple[str, ...] = ()
+    fix_commands: tuple[str, ...] = ()
+    investigation_steps: tuple[str, ...] = ()
     risks: tuple[str, ...] = ()

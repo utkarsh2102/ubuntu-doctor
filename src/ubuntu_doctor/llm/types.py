@@ -16,7 +16,8 @@ class RankedHypothesis:
     title: str
     why: str
     confidence: float
-    commands: tuple[str, ...] = ()
+    fix_commands: tuple[str, ...] = ()
+    investigation_steps: tuple[str, ...] = ()
     risks: tuple[str, ...] = ()
 
 

@@ -42,7 +42,8 @@ def _hyp(id_: str) -> Hypothesis:
         confidence=0.5,
         rationale="because reasons",
         evidence=(_event(0),),
-        commands=("echo hi",),
+        fix_commands=("apt install foo=1.0",),
+        investigation_steps=("journalctl -u foo",),
         risks=("be careful",),
     )
 

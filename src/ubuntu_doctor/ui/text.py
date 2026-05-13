@@ -109,9 +109,13 @@ def _append_llm_explanation(
                         subsequent_indent="      ",
                     )
                 )
-            if rh.commands:
-                lines.append("      suggested commands (NOT executed):")
-                for cmd in rh.commands:
+            if rh.fix_commands:
+                lines.append("      suggested fix commands (NOT executed):")
+                for cmd in rh.fix_commands:
+                    lines.append(f"        $ {cmd}")
+            if rh.investigation_steps:
+                lines.append("      investigation steps (read-only):")
+                for cmd in rh.investigation_steps:
                     lines.append(f"        $ {cmd}")
             if rh.risks:
                 lines.append("      risks:")
@@ -160,9 +164,18 @@ def _append_hypothesis(lines: list[str], i: int, h: Hypothesis) -> None:
         remaining = len(h.evidence) - MAX_EVIDENCE_DISPLAYED
         if remaining > 0:
             lines.append(f"        … and {remaining} more")
-    if h.commands:
-        lines.append("      suggested commands (NOT executed):")
-        for cmd in h.commands:
+    if h.fix_commands:
+        lines.append("      suggested fix commands (NOT executed):")
+        for cmd in h.fix_commands:
+            lines.append(f"        $ {cmd}")
+    if h.investigation_steps:
+        label = (
+            "investigation steps (no deterministic fix; LLM may suggest one):"
+            if not h.fix_commands
+            else "investigation steps (read-only):"
+        )
+        lines.append(f"      {label}")
+        for cmd in h.investigation_steps:
             lines.append(f"        $ {cmd}")
     if h.risks:
         lines.append("      risks:")

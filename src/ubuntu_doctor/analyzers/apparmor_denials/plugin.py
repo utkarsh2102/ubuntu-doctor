@@ -2,15 +2,19 @@
 profile, boosted when an apparmor-related package or snapd was upgraded
 in the same window.
 
-For snap profiles (`snap.<name>.<command>`) the suggested remediation
-is `snap connections <name>` — the most common cause is a missing
-interface connection rather than a profile bug. For non-snap profiles
-the suggestion is to inspect the profile under `/etc/apparmor.d/`.
+**The analyzer deliberately emits no `fix_commands`.** A correct
+remediation depends on the specific operation, path, and profile —
+context the analyzer has but cannot generalise into a single command
+without risking either silencing AppArmor (`aa-complain` / `aa-disable`,
+which we refuse to suggest) or making a wrong guess about which snap
+interface needs connecting. The LLM gets the full denial details and
+is responsible for producing a tailored fix.
 
-The analyzer NEVER suggests setting profiles to `aa-complain` or
-`aa-disable` without flagging the security risk: silencing AppArmor is
-not a fix, and we want the user warned before they reach for that
-hammer.
+What the analyzer does provide: investigation steps that gather the
+context the LLM (or the user) needs to commit to a fix — `aa-status`,
+`snap connections <name>`, and the on-disk profile path. The
+hypothesis's `rationale` explains this delegation explicitly so users
+running with `--no-ai` know why no fix command is offered.
 """
 
 from __future__ import annotations
@@ -91,9 +95,6 @@ def _build(
     correlating_upgrade: TimelineEvent | None,
 ) -> Hypothesis:
     operations = sorted({d.details.get("operation", "?") for d in denials})
-    names = sorted(
-        {d.details.get("name", "") for d in denials if d.details.get("name")}
-    )
     is_snap = _is_snap_profile(profile)
 
     if correlating_upgrade is not None:
@@ -123,8 +124,14 @@ def _build(
             f"({old} → {new}) at {correlating_upgrade.ts.isoformat()}, "
             "which can change profile semantics. "
         )
+    rationale_parts.append(
+        "No deterministic fix is proposed by this analyzer: a safe "
+        "remediation depends on the specific operation, path, and "
+        "profile. Run with the LLM enabled for a tailored suggestion, "
+        "or use the investigation steps below to decide manually."
+    )
 
-    commands: list[str] = [
+    investigation_steps: list[str] = [
         (
             "journalctl --grep='apparmor=\"DENIED\"' --since '1 week ago' "
             "--no-pager | head -40"
@@ -133,17 +140,18 @@ def _build(
     ]
     snap_name = _snap_name(profile)
     if snap_name:
-        commands.append(f"snap connections {snap_name}")
-        commands.append(
+        investigation_steps.append(f"snap connections {snap_name}")
+        investigation_steps.append(
             f"snap interfaces | grep -E ':\\s+{snap_name}(\\s|$)'"
         )
     else:
-        # For non-snap profiles, point at the on-disk profile path.
         profile_basename = profile.split(":", 1)[-1]
-        commands.append(
+        investigation_steps.append(
             f"ls -l /etc/apparmor.d/ | grep -i '{profile_basename}'"
         )
-        commands.append(f"aa-status --profiled | grep -F '{profile}'")
+        investigation_steps.append(
+            f"aa-status --profiled | grep -F '{profile}'"
+        )
 
     risks: list[str] = [
         "AppArmor exists to limit what a process can do. Disabling a "
@@ -168,7 +176,8 @@ def _build(
         rationale="".join(rationale_parts).strip(),
         evidence=tuple(denials)
         + ((correlating_upgrade,) if correlating_upgrade is not None else ()),
-        commands=tuple(commands),
+        fix_commands=(),
+        investigation_steps=tuple(investigation_steps),
         risks=tuple(risks),
     )
 
