@@ -461,4 +461,4 @@ See [docs/plan.md](docs/plan.md) for the full design and backlog.
 
 ## License
 
-GPL-3.0-or-later. See [pyproject.toml](pyproject.toml) for authorship.
+MIT License. See [LICENSE](LICENSE) file for authorship.
