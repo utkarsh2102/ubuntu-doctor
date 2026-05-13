@@ -22,11 +22,23 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 from ubuntu_doctor.analyzers.apparmor_denials import ANALYZER as AAD
+from ubuntu_doctor.analyzers.cache_health import ANALYZER as CH
+from ubuntu_doctor.analyzers.firmware_mismatch import ANALYZER as FWM
+from ubuntu_doctor.analyzers.held_packages import ANALYZER as HP
+from ubuntu_doctor.analyzers.irq_driver_regression import ANALYZER as IRQ
+from ubuntu_doctor.analyzers.oom_attribution import ANALYZER as OOMA
 from ubuntu_doctor.analyzers.postupgrade_regression import ANALYZER as PUR
+from ubuntu_doctor.analyzers.snap_refresh_breakage import ANALYZER as SRB
 from ubuntu_doctor.analyzers.systemd_health import ANALYZER as SYSH
+from ubuntu_doctor.collectors.apparmor_audit import COLLECTOR as AAUD
+from ubuntu_doctor.collectors.apt_log import COLLECTOR as APTL
+from ubuntu_doctor.collectors.cache_state import COLLECTOR as CS
 from ubuntu_doctor.collectors.dmesg import COLLECTOR as DMSG
+from ubuntu_doctor.collectors.diskspace import COLLECTOR as DS
 from ubuntu_doctor.collectors.dpkg_history import COLLECTOR as DPKG
+from ubuntu_doctor.collectors.hardware import COLLECTOR as HW
 from ubuntu_doctor.collectors.journald import COLLECTOR as JRND
+from ubuntu_doctor.collectors.snap_changes import COLLECTOR as SNAP
 from ubuntu_doctor.collectors.systemd_failed import COLLECTOR as SYSD
 from ubuntu_doctor.feedback import (
     IncidentStore,
@@ -48,8 +60,10 @@ from ubuntu_doctor.ranker import rank as rank_by_symptom
 from ubuntu_doctor.snapshot import Hypothesis, Snapshot
 from ubuntu_doctor.ui import jsonout, text
 
-COLLECTORS = (DPKG, SYSD, DMSG, JRND)
-ANALYZERS = (PUR, SYSH, AAD)
+COLLECTORS = (DPKG, SYSD, DMSG, JRND, APTL, SNAP, AAUD, HW, DS, CS)
+# Order matters only for output stability — analyzers run concurrently
+# under the orchestrator.
+ANALYZERS = (PUR, SYSH, AAD, HP, CH, OOMA, FWM, SRB, IRQ)
 
 _SINCE_PATTERN = re.compile(r"^(\d+)([smhdw])$")
 _SINCE_UNITS = {

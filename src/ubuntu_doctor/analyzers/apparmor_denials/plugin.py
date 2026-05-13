@@ -40,6 +40,32 @@ BASE_CONFIDENCE = 0.5
 UPGRADE_BOOST = 0.15
 SNAP_UPGRADE_BOOST = 0.20
 
+# The `journald` and `apparmor_audit` collectors both surface AppArmor
+# denial events. When both are active they almost always emit the same
+# kernel audit record twice — once via journald's audit transport, once
+# from /var/log/audit/audit.log. De-dup by (profile, timestamp rounded
+# to the nearest second, name, operation) so the analyzer counts each
+# real denial once.
+_DEDUPE_ROUNDING_SECONDS = 1
+
+
+def _dedupe_denials(denials: list[TimelineEvent]) -> list[TimelineEvent]:
+    seen: dict[tuple, TimelineEvent] = {}
+    order: list[tuple] = []
+    for d in denials:
+        ts_rounded = int(d.ts.timestamp() // _DEDUPE_ROUNDING_SECONDS)
+        key = (
+            d.subject,
+            ts_rounded,
+            d.details.get("name", ""),
+            d.details.get("operation", ""),
+        )
+        if key in seen:
+            continue
+        seen[key] = d
+        order.append(key)
+    return [seen[k] for k in order]
+
 
 def _is_snap_profile(profile: str) -> bool:
     return profile.startswith("snap.")
@@ -186,9 +212,9 @@ class ApparmorDenialsAnalyzer(Analyzer):
     id = "apparmor_denials"
 
     async def analyze(self, snapshot: Snapshot) -> list[Hypothesis]:
-        denials = [
-            e for e in snapshot.events if e.kind == EventKind.APPARMOR_DENIED
-        ]
+        denials = _dedupe_denials(
+            [e for e in snapshot.events if e.kind == EventKind.APPARMOR_DENIED]
+        )
         if not denials:
             return []
 

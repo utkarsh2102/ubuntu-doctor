@@ -64,6 +64,27 @@ async def test_no_denials_yields_no_hypotheses():
     assert await ApparmorDenialsAnalyzer().analyze(_snapshot([])) == []
 
 
+async def test_journald_and_apparmor_audit_duplicates_are_deduped():
+    # Both collectors emit the same kernel audit record. The analyzer
+    # must count it once.
+    journald = _denial(profile="snap.spotify.spotify", ts=T0)
+    audit = _denial(profile="snap.spotify.spotify", ts=T0)
+    # Distinguish only by source — same profile+ts+name+operation.
+    audit_event = TimelineEvent(
+        ts=audit.ts,
+        kind=audit.kind,
+        source="apparmor_audit",
+        subject=audit.subject,
+        summary=audit.summary,
+        details=dict(audit.details),
+    )
+    snap = _snapshot([journald, audit_event])
+    hs = await ApparmorDenialsAnalyzer().analyze(snap)
+    assert len(hs) == 1
+    # Title carries the count of unique denials, not the doubled total.
+    assert "1 operation(s)" in hs[0].title
+
+
 async def test_baseline_denial_emits_hypothesis_at_base_confidence():
     snap = _snapshot([_denial()])
     hs = await ApparmorDenialsAnalyzer().analyze(snap)

@@ -90,10 +90,16 @@ pytest -q
 
 ## Status
 
-- v1 in progress. Landed so far:
-  - Collectors: `dpkg_history`, `systemd_failed`, `dmesg`, `journald`
-  - Analyzers: `postupgrade_regression`, `systemd_health`,
-    `apparmor_denials`
+- v1 collector + analyzer set complete. Landed:
+  - **Collectors** (10): `dpkg_history`, `systemd_failed`, `dmesg`,
+    `journald`, `apt_log`, `snap_changes`, `apparmor_audit`,
+    `hardware`, `diskspace`, `cache_state`. The last four are
+    fact-only (no events) — they populate `snapshot.facts[<id>]`.
+  - **Analyzers** (9): `postupgrade_regression`, `systemd_health`,
+    `apparmor_denials` (with kernel-audit dedupe across `journald` +
+    `apparmor_audit`), `held_packages`, `cache_health`,
+    `oom_attribution`, `firmware_mismatch`, `snap_refresh_breakage`,
+    `irq_driver_regression`.
   - LLM client against the Ubuntu Inference Snap with lenient JSON
     parsing, graceful degradation when the endpoint is unreachable,
     and a hard safety filter (`FORBIDDEN_FIX_PATTERNS`) that strips
@@ -119,11 +125,9 @@ pytest -q
     `--no-ai`, `--json`, `--since`, `--model`, `--base-url`,
     `--llm-timeout`; diagnose modes additionally accept `--no-rag` and
     `--no-history` for opt-out of the new subsystems.
-- Not yet implemented: the remaining analyzers and collectors
-  (`apt_log`, `snap_changes`, `hardware`, `cache_state`, `diskspace`,
-  and analyzers `held_packages`, `firmware_mismatch`, `oom_attribution`,
-  `snap_refresh_breakage`, `irq_driver_regression`, `cache_health`).
-  See [docs/plan.md](docs/plan.md) for the full backlog.
+- Open items: `--apply` mode (apply fixes interactively, not in v1),
+  MCP collector server, community incident corpus, snap distribution.
+  See [docs/plan.md](docs/plan.md).
 
 **Window semantics:** `--since` filters historical events (package
 upgrades, past service failures). It does NOT filter
